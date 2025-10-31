@@ -1,0 +1,38 @@
+# Django & REST Framework
+Django==4.2.7
+djangorestframework==3.14.0
+django-cors-headers==4.3.1
+django-environ==0.11.2
+
+# Database
+# Note: If psycopg2-binary fails to install, try: pip install psycopg2-binary --no-binary psycopg2-binary
+# Or install PostgreSQL libraries: brew install postgresql (macOS) or apt-get install libpq-dev (Linux)
+psycopg2-binary==2.9.9
+
+# Authentication
+djangorestframework-simplejwt==5.3.0
+
+# Celery & Task Queue
+celery==5.3.4
+redis==5.0.1
+
+# RSS & HTTP
+feedparser==6.0.10
+requests==2.31.0
+aiohttp==3.9.1
+beautifulsoup4==4.12.2
+
+# AWS S3 Storage (Optional)
+boto3==1.29.7
+django-storages==1.14.2
+
+# Utilities
+python-slugify==8.0.1
+Pillow==10.1.0
+
+# Google Gemini AI
+google-generativeai==0.3.2
+
+# Development
+django-extensions==3.2.3
+
