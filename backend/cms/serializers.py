@@ -25,12 +25,12 @@ class ArticleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Article
         fields = [
-            'id', 'title', 'slug', 'summary', 'summary_english', 'body', 'status',
+            'id', 'title', 'slug', 'summary', 'summary_english', 'body', 'status', 'category',
             'author', 'author_name', 'editor', 'editor_name',
             'featured_image', 'featured_image_url',
             'meta_title', 'meta_description',
             'og_title', 'og_description', 'og_image', 'og_image_url',
-            'source_url', 'source_feed',
+            'source_url', 'source_feed', 'trend_data',
             'created_at', 'updated_at', 'published_at',
             'generation_started_at', 'generation_completed_at',
         ]
@@ -64,9 +64,9 @@ class ArticleListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Article
         fields = [
-            'id', 'title', 'slug', 'summary', 'status',
+            'id', 'title', 'slug', 'summary', 'status', 'category',
             'author_name', 'created_at', 'updated_at', 'published_at',
-            'source_url', 'featured_image_url',
+            'source_url', 'featured_image_url', 'trend_data',
         ]
     
     def get_featured_image_url(self, obj):

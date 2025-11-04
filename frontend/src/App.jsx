@@ -5,6 +5,7 @@ import Dashboard from './components/Dashboard/Dashboard'
 import ArticleList from './components/Articles/ArticleList'
 import ArticleEdit from './components/Articles/ArticleEdit'
 import ArticleCreate from './components/Articles/ArticleCreate'
+import RSSFeedManager from './components/RSSFeeds/RSSFeedManager'
 import ProtectedRoute from './components/ProtectedRoute'
 
 function App() {
@@ -28,6 +29,7 @@ function App() {
         <Route path="articles" element={<ArticleList />} />
         <Route path="articles/create" element={<ArticleCreate />} />
         <Route path="articles/:id/edit" element={<ArticleEdit />} />
+        <Route path="rss-feeds" element={<RSSFeedManager />} />
       </Route>
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>

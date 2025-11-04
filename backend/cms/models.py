@@ -17,6 +17,12 @@ class Article(models.Model):
         ('archived', 'Archived'),    # Article archived
     ]
     
+    CATEGORY_CHOICES = [
+        ('reliable_sources', 'Reliable Sources'),
+        ('trends', 'Trends'),
+        ('subscriptions', 'Subscriptions'),
+    ]
+    
     title = models.CharField(max_length=255)  # Malayalam title
     slug = models.SlugField(max_length=255, unique=True, blank=True)  # English slug
     summary = models.TextField(blank=True)  # Malayalam summary
@@ -29,6 +35,16 @@ class Article(models.Model):
         choices=STATUS_CHOICES,
         default='fetched'
     )
+    
+    # Category
+    category = models.CharField(
+        max_length=20,
+        choices=CATEGORY_CHOICES,
+        default='reliable_sources'
+    )
+    
+    # Trend data (for trends category)
+    trend_data = models.JSONField(null=True, blank=True, help_text="Google Trends data")
     
     # Author/Editor
     author = models.ForeignKey(

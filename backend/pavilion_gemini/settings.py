@@ -175,6 +175,14 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'rss_fetcher.tasks.fetch_rss_feeds',
         'schedule': timedelta(minutes=RSS_FETCH_INTERVAL_MINUTES),  # Configurable interval
     },
+    'fetch-trends-sports': {
+        'task': 'rss_fetcher.tasks.fetch_google_trends_sports',
+        'schedule': timedelta(hours=1),  # Fetch trends every hour (gets last 1 hour articles)
+    },
+    'enhance-with-google-trends': {
+        'task': 'rss_fetcher.tasks.enhance_articles_with_google_trends',
+        'schedule': timedelta(hours=1),  # Enhance articles every hour with Google Trends data
+    },
 }
 
 # AWS S3 Settings (Optional)
@@ -193,4 +201,7 @@ RSS_FEEDS = env.list('RSS_FEEDS', default=[])
 # Google Gemini AI
 GEMINI_API_KEY = env('GEMINI_API_KEY', default='')
 GEMINI_MODEL = env('GEMINI_MODEL', default='gemini-2.5-flash')
+
+# News API
+NEWS_API_KEY = env('NEWS_API_KEY', default='')
 

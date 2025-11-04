@@ -3,10 +3,11 @@ import api from '../../services/api'
 
 export const fetchArticles = createAsyncThunk(
   'articles/fetchArticles',
-  async ({ status, page = 1 }, { rejectWithValue }) => {
+  async ({ status, category, page = 1 }, { rejectWithValue }) => {
     try {
       const params = { page }
       if (status) params.status = status
+      if (category) params.category = category
       const response = await api.get('/articles/', { params })
       return response.data
     } catch (error) {
@@ -80,6 +81,30 @@ export const archiveArticle = createAsyncThunk(
   async (articleId, { rejectWithValue }) => {
     try {
       const response = await api.post(`/articles/${articleId}/archive/`)
+      return response.data
+    } catch (error) {
+      return rejectWithValue(error.response?.data || error.message)
+    }
+  }
+)
+
+export const fetchTrends = createAsyncThunk(
+  'articles/fetchTrends',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await api.post('/rss/feeds/fetch-trends/')
+      return response.data
+    } catch (error) {
+      return rejectWithValue(error.response?.data || error.message)
+    }
+  }
+)
+
+export const fetchAllFeeds = createAsyncThunk(
+  'articles/fetchAllFeeds',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await api.post('/rss/feeds/fetch_all/')
       return response.data
     } catch (error) {
       return rejectWithValue(error.response?.data || error.message)

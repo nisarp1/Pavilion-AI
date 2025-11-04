@@ -33,8 +33,11 @@ class ArticleViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = Article.objects.all()
         status_filter = self.request.query_params.get('status', None)
+        category_filter = self.request.query_params.get('category', None)
         if status_filter:
             queryset = queryset.filter(status=status_filter)
+        if category_filter:
+            queryset = queryset.filter(category=category_filter)
         return queryset
     
     def perform_create(self, serializer):
@@ -64,29 +67,41 @@ class ArticleViewSet(viewsets.ModelViewSet):
                 'task_id': task.id,
                 'article_id': article.id
             }, status=status.HTTP_202_ACCEPTED)
-        except Exception:
+        except Exception as celery_error:
             # Celery not available, run synchronously
-            from workers.tasks import _generate_article_task_impl
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"Celery not available, running synchronously: {str(celery_error)}")
+            
             try:
+                from workers.tasks import _generate_article_task_impl
                 # Call the implementation function directly (synchronously)
                 result = _generate_article_task_impl(article.id)
                 
                 # Refresh article from database
                 article.refresh_from_db()
                 
-                if result.get('success'):
+                if result and result.get('success'):
                     return Response({
                         'message': 'Article generated successfully',
                         'article_id': article.id,
                         'status': article.status
                     }, status=status.HTTP_200_OK)
                 else:
+                    error_msg = result.get('error', 'Generation failed') if result else 'Generation failed'
+                    logger.error(f"Article generation failed: {error_msg}")
                     return Response({
-                        'error': result.get('error', 'Generation failed')
+                        'error': error_msg
                     }, status=status.HTTP_400_BAD_REQUEST)
-            except Exception as e:
+            except ImportError as import_error:
+                logger.error(f"Failed to import generation function: {str(import_error)}")
                 return Response({
-                    'error': str(e)
+                    'error': f'Failed to import generation module: {str(import_error)}'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            except Exception as e:
+                logger.error(f"Error generating article: {str(e)}", exc_info=True)
+                return Response({
+                    'error': f'Generation error: {str(e)}'
                 }, status=status.HTTP_400_BAD_REQUEST)
     
     @action(detail=True, methods=['post'])

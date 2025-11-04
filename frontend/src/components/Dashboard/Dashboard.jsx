@@ -1,7 +1,7 @@
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { logout } from '../../store/slices/authSlice'
-import { FiHome, FiFileText, FiPlus, FiLogOut, FiMenu, FiX } from 'react-icons/fi'
+import { FiHome, FiFileText, FiPlus, FiLogOut, FiMenu, FiX, FiRss } from 'react-icons/fi'
 import { useState } from 'react'
 
 function Dashboard() {
@@ -18,6 +18,7 @@ function Dashboard() {
   const navItems = [
     { path: '/articles', label: 'Articles', icon: FiFileText },
     { path: '/articles/create', label: 'Create Article', icon: FiPlus },
+    { path: '/rss-feeds', label: 'RSS Feeds', icon: FiRss },
   ]
 
   return (

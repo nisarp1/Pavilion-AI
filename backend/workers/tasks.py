@@ -1,7 +1,17 @@
 """
 Celery tasks for article generation and processing.
 """
-from celery import shared_task
+try:
+    from celery import shared_task
+    CELERY_AVAILABLE = True
+except ImportError:
+    CELERY_AVAILABLE = False
+    # Create a dummy decorator if celery is not available
+    def shared_task(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+
 from django.utils import timezone
 from django.conf import settings
 from cms.models import Article
@@ -21,7 +31,13 @@ logger = logging.getLogger(__name__)
 GEMINI_API_KEY = getattr(settings, 'GEMINI_API_KEY', '')
 GEMINI_MODEL = getattr(settings, 'GEMINI_MODEL', 'gemini-2.5-flash')
 if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+    try:
+        genai.configure(api_key=GEMINI_API_KEY)
+        logger.info(f"Gemini AI configured with model: {GEMINI_MODEL}")
+    except Exception as e:
+        logger.error(f"Failed to configure Gemini AI: {str(e)}")
+else:
+    logger.warning("GEMINI_API_KEY not configured")
 
 
 def fetch_featured_image_from_url(article_url):
@@ -227,13 +243,51 @@ BODY REQUIREMENTS:
 Return the JSON response with all fields filled."""
 
         # Initialize the model
-        model = genai.GenerativeModel(GEMINI_MODEL)
+        try:
+            model = genai.GenerativeModel(GEMINI_MODEL)
+            logger.info(f"Initialized Gemini model: {GEMINI_MODEL}")
+        except Exception as model_error:
+            error_msg = str(model_error)
+            logger.error(f"Failed to initialize model {GEMINI_MODEL}: {error_msg}")
+            
+            # Check if it's a model name issue or API key issue
+            if '403' in error_msg or 'leaked' in error_msg.lower() or 'PermissionDenied' in error_msg:
+                logger.error("API KEY ERROR: Your Gemini API key is invalid or has been revoked.")
+                return None
+            
+            # Try fallback model
+            try:
+                logger.info("Trying fallback model: gemini-flash-latest")
+                model = genai.GenerativeModel('gemini-flash-latest')
+                logger.info("Successfully initialized fallback model")
+            except Exception as fallback_error:
+                logger.error(f"Failed to initialize fallback model: {str(fallback_error)}")
+                return None
         
         # Generate content
-        response = model.generate_content(prompt)
+        try:
+            logger.info(f"Calling Gemini API with model: {GEMINI_MODEL}")
+            response = model.generate_content(prompt)
+            logger.info("Gemini API call successful")
+        except Exception as api_error:
+            error_msg = str(api_error)
+            logger.error(f"Gemini API call failed: {error_msg}")
+            import traceback
+            logger.error(traceback.format_exc())
+            
+            # Check for specific error types
+            if '403' in error_msg or 'leaked' in error_msg.lower() or 'PermissionDenied' in error_msg:
+                logger.error("API KEY ERROR: Your Gemini API key is invalid or has been revoked. Please generate a new API key from Google AI Studio.")
+            elif '404' in error_msg or 'NotFound' in error_msg:
+                logger.error("MODEL ERROR: The specified Gemini model is not found. Please check the model name.")
+            elif '429' in error_msg or 'quota' in error_msg.lower():
+                logger.error("QUOTA ERROR: API quota exceeded. Please check your usage limits.")
+            
+            return None
         
         if response and response.text:
             generated_text = response.text.strip()
+            logger.info(f"Gemini response received (length: {len(generated_text)})")
             
             # Try to parse JSON response
             import json
@@ -244,6 +298,7 @@ Return the JSON response with all fields filled."""
             if json_match:
                 try:
                     content_data = json.loads(json_match.group())
+                    logger.info("Successfully parsed JSON from Gemini response")
                     
                     # Return structured data
                     return {
@@ -258,14 +313,33 @@ Return the JSON response with all fields filled."""
                     }
                 except json.JSONDecodeError as e:
                     logger.error(f"Failed to parse JSON response: {str(e)}")
-                    logger.debug(f"Response was: {generated_text[:500]}")
+                    logger.error(f"Response was: {generated_text[:1000]}")
+            else:
+                logger.warning("No JSON found in Gemini response")
+                logger.debug(f"Response was: {generated_text[:500]}")
             
             # Fallback: if JSON parsing fails, try to extract content manually
             logger.warning("JSON parsing failed, attempting to extract content from text")
+            # Try to create a simple body from the response if it's not JSON
+            if generated_text and len(generated_text) > 100:
+                # Extract first few paragraphs if possible
+                paragraphs = generated_text.split('\n\n')
+                body_content = '\n'.join([f'<p>{p.strip()}</p>' for p in paragraphs[:5] if p.strip()])
+                if body_content:
+                    logger.info("Extracted content from text response")
+                    return {
+                        'title_malayalam': original_title,  # Keep original if no translation
+                        'summary_malayalam': paragraphs[0][:200] if paragraphs else original_summary,
+                        'summary_english': original_summary,
+                        'body_malayalam': body_content,
+                        'meta_title': original_title[:70],
+                        'meta_description': (paragraphs[0][:160] if paragraphs else original_summary[:160]),
+                        'og_title': original_title[:70],
+                        'og_description': (paragraphs[0][:200] if paragraphs else original_summary[:200]),
+                    }
             return None
-            
         else:
-            logger.error("Gemini returned empty response")
+            logger.error(f"Gemini returned empty or invalid response: {response}")
             return None
             
     except Exception as e:
@@ -299,23 +373,30 @@ def _generate_article_task_impl(article_id):
             fetch_and_save_featured_image(article)
         
         # Generate complete Malayalam content using Gemini AI
+        logger.info(f"Starting Gemini generation for article {article_id}")
         generated_content = generate_article_with_gemini(article)
         
         if generated_content and isinstance(generated_content, dict):
-            # Update all fields with Malayalam content
-            article.title = generated_content.get('title_malayalam', article.title)
-            article.summary = generated_content.get('summary_malayalam', article.summary)
-            article.summary_english = generated_content.get('summary_english', '')
-            article.body = generated_content.get('body_malayalam', '')
-            article.meta_title = generated_content.get('meta_title', '')
-            article.meta_description = generated_content.get('meta_description', '')
-            article.og_title = generated_content.get('og_title', '')
-            article.og_description = generated_content.get('og_description', '')
-            
-            logger.info(f"Malayalam article content generated successfully using Gemini AI")
-        else:
+            # Verify we have at least body content
+            if generated_content.get('body_malayalam'):
+                # Update all fields with Malayalam content
+                article.title = generated_content.get('title_malayalam', article.title)
+                article.summary = generated_content.get('summary_malayalam', article.summary)
+                article.summary_english = generated_content.get('summary_english', '')
+                article.body = generated_content.get('body_malayalam', '')
+                article.meta_title = generated_content.get('meta_title', '')
+                article.meta_description = generated_content.get('meta_description', '')
+                article.og_title = generated_content.get('og_title', '')
+                article.og_description = generated_content.get('og_description', '')
+                
+                logger.info(f"Malayalam article content generated successfully using Gemini AI")
+            else:
+                logger.warning(f"Gemini returned content but body_malayalam is empty")
+                generated_content = None  # Force fallback
+        
+        if not generated_content:
             # Fallback to basic content if Gemini fails
-            logger.warning(f"Gemini generation failed, using fallback content")
+            logger.warning(f"Gemini generation failed for article {article_id}, using fallback content")
             if article.summary:
                 article.body = f"""
 <p>സഹകരണമില്ലായ്മ കാരണം ഈ ലേഖനത്തിന് ഉള്ളടക്കം ഇതുവരെ സൃഷ്ടിച്ചിട്ടില്ല. ദയവായി പിന്നീട് പരിശോധിക്കുക അല്ലെങ്കിൽ ഉള്ളടക്കം സ്വമേധയാ ചേർക്കുക.</p>

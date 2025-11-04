@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useParams, useNavigate } from 'react-router-dom'
-import { fetchArticle, updateArticle } from '../../store/slices/articleSlice'
-import ArticleForm from './ArticleForm'
+import { fetchArticle, updateArticle, publishArticle } from '../../store/slices/articleSlice'
+import { FiImage, FiUser, FiLink, FiTag, FiExternalLink } from 'react-icons/fi'
+import { CKEditor } from '@ckeditor/ckeditor5-react'
+import ClassicEditor from '@ckeditor/ckeditor5-build-classic'
 
 function ArticleEdit() {
   const { id } = useParams()
@@ -10,21 +12,80 @@ function ArticleEdit() {
   const dispatch = useDispatch()
   const { currentArticle, loading } = useSelector((state) => state.articles)
   const [saving, setSaving] = useState(false)
-
+  const [formData, setFormData] = useState({
+    title: '',
+    slug: '',
+    summary: '',
+    body: '',
+    status: 'draft',
+    category: 'reliable_sources',
+    author: '',
+    meta_title: '',
+    meta_description: '',
+    og_title: '',
+    og_description: '',
+  })
   useEffect(() => {
     dispatch(fetchArticle(id))
   }, [dispatch, id])
 
-  const handleSubmit = async (formData) => {
+  useEffect(() => {
+    if (currentArticle) {
+      setFormData({
+        title: currentArticle.title || '',
+        slug: currentArticle.slug || '',
+        summary: currentArticle.summary || '',
+        body: currentArticle.body || '',
+        status: currentArticle.status || 'draft',
+        category: currentArticle.category || 'reliable_sources',
+        author: currentArticle.author || '',
+        meta_title: currentArticle.meta_title || '',
+        meta_description: currentArticle.meta_description || '',
+        og_title: currentArticle.og_title || '',
+        og_description: currentArticle.og_description || '',
+      })
+    }
+  }, [currentArticle])
+
+  const handleChange = (e) => {
+    const { name, value } = e.target
+    setFormData((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleBodyChange = (event, editor) => {
+    const data = editor.getData()
+    setFormData((prev) => ({ ...prev, body: data }))
+  }
+
+  const handleStatusChange = (newStatus) => {
+    setFormData((prev) => ({ ...prev, status: newStatus }))
+  }
+
+  const handleSave = async (status) => {
     setSaving(true)
     try {
-      await dispatch(updateArticle({ id, data: formData })).unwrap()
+      const dataToSave = { ...formData, status }
+      await dispatch(updateArticle({ id, data: dataToSave })).unwrap()
+      
+      if (status === 'published') {
+        await dispatch(publishArticle(id))
+      }
+      
       navigate('/articles')
     } catch (error) {
-      console.error('Error updating article:', error)
+      console.error('Error saving article:', error)
+      alert('Error saving article: ' + (error.message || 'Unknown error'))
     } finally {
       setSaving(false)
     }
+  }
+
+  const handlePublish = () => {
+    handleSave('published')
+  }
+
+  const handleSaveDraft = () => {
+    handleSave('draft')
   }
 
   if (loading || !currentArticle) {
@@ -35,29 +96,313 @@ function ArticleEdit() {
     )
   }
 
+  const categoryOptions = [
+    { value: 'reliable_sources', label: 'Reliable Sources' },
+    { value: 'trends', label: 'Trends' },
+    { value: 'subscriptions', label: 'Subscriptions' },
+  ]
+
   return (
-    <div>
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-800">Edit Article</h1>
-        <p className="text-gray-600 mt-1">Update article content and metadata</p>
-        {currentArticle?.source_url && (
-          <div className="mt-2 text-sm text-gray-500">
-            Source: <a href={currentArticle.source_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-              {currentArticle.source_url}
-            </a>
-          </div>
-        )}
+    <div className="max-w-7xl mx-auto">
+      {/* Header with Publish/Draft buttons */}
+      <div className="mb-6 flex justify-between items-center border-b border-gray-200 pb-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-800">Edit Article</h1>
+        </div>
+        <div className="flex gap-3">
+          <button
+            onClick={handleSaveDraft}
+            disabled={saving}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              formData.status === 'draft'
+                ? 'bg-gray-200 text-gray-700'
+                : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
+          >
+            {saving ? 'Saving...' : 'Save Draft'}
+          </button>
+          <button
+            onClick={handlePublish}
+            disabled={saving}
+            className="px-6 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+          >
+            {saving ? 'Publishing...' : 'Publish'}
+          </button>
+        </div>
       </div>
 
-      <ArticleForm
-        initialData={currentArticle}
-        onSubmit={handleSubmit}
-        saving={saving}
-        submitLabel="Update Article"
-      />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Main Content Area */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Title */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
+              Title *
+            </label>
+            <input
+              type="text"
+              id="title"
+              name="title"
+              value={formData.title}
+              onChange={handleChange}
+              required
+              className="w-full px-4 py-3 text-lg border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              placeholder="Enter article title"
+            />
+          </div>
+
+          {/* Body Editor */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Content *</label>
+            <div className="border border-gray-300 rounded-lg">
+              <CKEditor
+                editor={ClassicEditor}
+                data={formData.body}
+                onChange={handleBodyChange}
+                config={{
+                  toolbar: [
+                    'heading',
+                    '|',
+                    'bold',
+                    'italic',
+                    'link',
+                    'bulletedList',
+                    'numberedList',
+                    '|',
+                    'blockQuote',
+                    'insertTable',
+                    '|',
+                    'undo',
+                    'redo',
+                  ],
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Summary */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <label htmlFor="summary" className="block text-sm font-medium text-gray-700 mb-2">
+              Excerpt
+            </label>
+            <textarea
+              id="summary"
+              name="summary"
+              value={formData.summary}
+              onChange={handleChange}
+              rows={4}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              placeholder="Write an excerpt..."
+            />
+          </div>
+
+          {/* SEO Section */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">SEO Metadata</h3>
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="meta_title" className="block text-sm font-medium text-gray-700 mb-2">
+                  Meta Title
+                </label>
+                <input
+                  type="text"
+                  id="meta_title"
+                  name="meta_title"
+                  value={formData.meta_title}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label htmlFor="meta_description" className="block text-sm font-medium text-gray-700 mb-2">
+                  Meta Description
+                </label>
+                <textarea
+                  id="meta_description"
+                  name="meta_description"
+                  value={formData.meta_description}
+                  onChange={handleChange}
+                  rows={3}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label htmlFor="og_title" className="block text-sm font-medium text-gray-700 mb-2">
+                  OG Title
+                </label>
+                <input
+                  type="text"
+                  id="og_title"
+                  name="og_title"
+                  value={formData.og_title}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label htmlFor="og_description" className="block text-sm font-medium text-gray-700 mb-2">
+                  OG Description
+                </label>
+                <textarea
+                  id="og_description"
+                  name="og_description"
+                  value={formData.og_description}
+                  onChange={handleChange}
+                  rows={3}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Sidebar */}
+        <div className="space-y-6">
+          {/* Publish/Draft Status */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide">Status</h3>
+            <div className="space-y-2">
+              <label className="flex items-center">
+                <input
+                  type="radio"
+                  name="status"
+                  value="draft"
+                  checked={formData.status === 'draft'}
+                  onChange={() => handleStatusChange('draft')}
+                  className="w-4 h-4 text-primary-600 focus:ring-primary-500"
+                />
+                <span className="ml-2 text-sm text-gray-700">Draft</span>
+              </label>
+              <label className="flex items-center">
+                <input
+                  type="radio"
+                  name="status"
+                  value="published"
+                  checked={formData.status === 'published'}
+                  onChange={() => handleStatusChange('published')}
+                  className="w-4 h-4 text-primary-600 focus:ring-primary-500"
+                />
+                <span className="ml-2 text-sm text-gray-700">Published</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Featured Image */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide flex items-center gap-2">
+              <FiImage size={16} />
+              Featured Image
+            </h3>
+            {currentArticle.featured_image_url ? (
+              <div className="space-y-3">
+                <img
+                  src={currentArticle.featured_image_url}
+                  alt="Featured"
+                  className="w-full h-48 object-cover rounded-lg border border-gray-300"
+                  onError={(e) => {
+                    e.target.style.display = 'none'
+                  }}
+                />
+                <button
+                  type="button"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  Change Image
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="w-full px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-600 hover:border-primary-500 hover:text-primary-600"
+              >
+                Set featured image
+              </button>
+            )}
+          </div>
+
+          {/* Author */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide flex items-center gap-2">
+              <FiUser size={16} />
+              Author
+            </h3>
+            <input
+              type="text"
+              name="author"
+              value={currentArticle.author_name || 'admin'}
+              readOnly
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm text-gray-600"
+            />
+            <p className="mt-2 text-xs text-gray-500">Author cannot be changed</p>
+          </div>
+
+          {/* Slug */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide flex items-center gap-2">
+              <FiLink size={16} />
+              Slug
+            </h3>
+            <input
+              type="text"
+              name="slug"
+              value={formData.slug}
+              onChange={handleChange}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+              placeholder="article-slug"
+            />
+            <p className="mt-2 text-xs text-gray-500">The "slug" is the URL-friendly version of the name.</p>
+          </div>
+
+          {/* Reference Link */}
+          {currentArticle.source_url && (
+            <div className="bg-white rounded-lg shadow p-6">
+              <h3 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide flex items-center gap-2">
+                <FiExternalLink size={16} />
+                Reference Link
+              </h3>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                  <a
+                    href={currentArticle.source_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-blue-600 hover:text-blue-800 hover:underline flex-1 truncate"
+                  >
+                    {currentArticle.source_url}
+                  </a>
+                  <FiExternalLink size={14} className="text-gray-400 flex-shrink-0" />
+                </div>
+                <p className="text-xs text-gray-500">Original source URL for this article.</p>
+              </div>
+            </div>
+          )}
+
+          {/* Categories */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide flex items-center gap-2">
+              <FiTag size={16} />
+              Categories
+            </h3>
+            <div className="space-y-2">
+              {categoryOptions.map((option) => (
+                <label key={option.value} className="flex items-center">
+                  <input
+                    type="radio"
+                    name="category"
+                    value={option.value}
+                    checked={formData.category === option.value}
+                    onChange={handleChange}
+                    className="w-4 h-4 text-primary-600 focus:ring-primary-500"
+                  />
+                  <span className="ml-2 text-sm text-gray-700">{option.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
 
 export default ArticleEdit
-

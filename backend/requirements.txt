@@ -33,6 +33,9 @@ Pillow==10.1.0
 # Google Gemini AI
 google-generativeai==0.3.2
 
+# Google Trends
+pytrends==4.9.2
+
 # Development
 django-extensions==3.2.3
 
