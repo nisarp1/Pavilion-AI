@@ -5,6 +5,9 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { store } from './store'
 import './index.css'
+// Initialize Quill modules before app renders
+// Temporarily disabled to debug blank page
+// import './utils/initQuill'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

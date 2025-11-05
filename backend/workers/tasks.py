@@ -14,7 +14,7 @@ except ImportError:
 
 from django.utils import timezone
 from django.conf import settings
-from cms.models import Article
+from cms.models import Article, Category
 from slugify import slugify
 import logging
 import google.generativeai as genai
@@ -24,6 +24,7 @@ from urllib.parse import urljoin, urlparse
 from io import BytesIO
 from django.core.files.base import ContentFile
 from PIL import Image
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +129,120 @@ def fetch_featured_image_from_url(article_url):
     except Exception as e:
         logger.debug(f"Error fetching image from URL {article_url}: {str(e)}")
         return None
+
+
+def auto_assign_categories(article):
+    """
+    Automatically assign categories to an article based on its content.
+    Uses keyword matching against category names and descriptions.
+    Also considers subcategories for more precise matching.
+    """
+    try:
+        # Get all active categories (including subcategories)
+        all_categories = Category.objects.filter(is_active=True).select_related('parent').prefetch_related('children')
+        
+        if not all_categories.exists():
+            logger.debug("No categories available for auto-assignment")
+            return
+        
+        # Prepare article text for matching (title + summary + body)
+        article_text = ''
+        if article.title:
+            article_text += article.title.lower() + ' '
+        if article.summary:
+            article_text += article.summary.lower() + ' '
+        if article.summary_english:
+            article_text += article.summary_english.lower() + ' '
+        if article.body:
+            # Remove HTML tags for better matching
+            body_text = re.sub(r'<[^>]+>', ' ', article.body)
+            article_text += body_text.lower() + ' '
+        
+        # Also check source URL for hints
+        if article.source_url:
+            url_lower = article.source_url.lower()
+            article_text += url_lower + ' '
+        
+        matched_categories = []
+        
+        # Define keyword mappings for common sports terms
+        keyword_mappings = {
+            'cricket': ['cricket', 'cricketer', 'ipl', 'odi', 'test', 't20', 'wicket', 'run', 'batting', 'bowling', 'team india', 'bcci'],
+            'football': ['football', 'soccer', 'fifa', 'premier league', 'epl', 'la liga', 'serie a', 'champions league', 'world cup', 'goal', 'match', 'player'],
+            'ipl': ['ipl', 'indian premier league', 'csk', 'mi', 'rcb', 'kkr', 'dc', 'rr', 'srh', 'lsg', 'gt', 'pbks'],
+            'epl': ['epl', 'premier league', 'manchester', 'liverpool', 'chelsea', 'arsenal', 'tottenham'],
+            'laliga': ['la liga', 'barcelona', 'real madrid', 'atletico', 'sevilla', 'valencia'],
+            'seriea': ['serie a', 'juventus', 'milan', 'inter', 'napoli', 'roma'],
+            'isl': ['isl', 'indian super league', 'mumbai city', 'atk', 'kerala blasters', 'bengaluru'],
+        }
+        
+        # Match against category names and descriptions
+        for category in all_categories:
+            score = 0
+            category_name_lower = category.name.lower()
+            
+            # Direct category name match (high weight)
+            if category_name_lower in article_text:
+                # Count occurrences and weight heavily
+                count = article_text.count(category_name_lower)
+                score += count * 50  # High weight for exact category name
+            
+            # Check keyword mappings
+            for key, keywords in keyword_mappings.items():
+                if key in category_name_lower:
+                    for keyword in keywords:
+                        if keyword in article_text:
+                            count = article_text.count(keyword)
+                            score += count * 20  # Medium-high weight for mapped keywords
+            
+            # Check description words
+            if category.description:
+                desc_words = re.findall(r'\b\w+\b', category.description.lower())
+                for word in desc_words:
+                    if len(word) > 3 and word in article_text:
+                        count = article_text.count(word)
+                        score += count * 5  # Lower weight for description words
+            
+            # Check subcategory names (higher weight if subcategory matches)
+            if category.children.exists():
+                for child in category.children.filter(is_active=True):
+                    child_name_lower = child.name.lower()
+                    if child_name_lower in article_text:
+                        count = article_text.count(child_name_lower)
+                        score += count * 30  # Medium-high weight for subcategory names
+                        # Also add score to parent
+                        parent_score = count * 15
+                        score += parent_score
+            
+            # Check individual words from category name
+            category_words = re.findall(r'\b\w+\b', category_name_lower)
+            for word in category_words:
+                if len(word) > 3 and word in article_text:
+                    count = article_text.count(word)
+                    score += count * 3  # Lower weight for individual words
+            
+            # If score is significant, add to matched categories
+            if score > 15:  # Threshold for matching
+                matched_categories.append((category, score))
+        
+        # Sort by score and take top matches
+        matched_categories.sort(key=lambda x: x[1], reverse=True)
+        
+        # Assign categories (limit to top 3 to avoid over-categorization)
+        categories_to_assign = [cat for cat, score in matched_categories[:3]]
+        
+        if categories_to_assign:
+            # Clear existing categories and assign new ones
+            article.categories.clear()
+            article.categories.add(*categories_to_assign)
+            logger.info(f"Auto-assigned {len(categories_to_assign)} categories to article {article.id} ({article.title[:50]}): {[c.name for c in categories_to_assign]}")
+        else:
+            logger.debug(f"No categories matched for article {article.id} ({article.title[:50]})")
+            
+    except Exception as e:
+        logger.error(f"Error auto-assigning categories to article {article.id}: {str(e)}")
+        import traceback
+        logger.debug(traceback.format_exc())
 
 
 def fetch_and_save_featured_image(article, image_url=None):
@@ -431,6 +546,10 @@ def _generate_article_task_impl(article_id):
         
         if not article.og_description and article.summary:
             article.og_description = article.summary[:200]  # Limit to 200 chars
+        
+        # Auto-assign categories based on content
+        logger.info(f"Auto-assigning categories to article {article_id}")
+        auto_assign_categories(article)
         
         # Mark as draft (ready for editing)
         article.status = 'draft'

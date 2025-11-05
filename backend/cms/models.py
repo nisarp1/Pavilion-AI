@@ -7,6 +7,55 @@ from django.utils import timezone
 from slugify import slugify
 
 
+class Category(models.Model):
+    """Category model for organizing articles with subcategories."""
+    
+    name = models.CharField(max_length=100, unique=True)
+    slug = models.SlugField(max_length=100, unique=True, blank=True)
+    description = models.TextField(blank=True)
+    parent = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='children',
+        help_text="Parent category for subcategories"
+    )
+    order = models.IntegerField(default=0, help_text="Display order")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name_plural = "Categories"
+        ordering = ['order', 'name']
+        indexes = [
+            models.Index(fields=['parent', 'is_active']),
+            models.Index(fields=['slug']),
+        ]
+    
+    def __str__(self):
+        if self.parent:
+            return f"{self.parent.name} > {self.name}"
+        return self.name
+    
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.name)
+        super().save(*args, **kwargs)
+    
+    def get_full_path(self):
+        """Get full category path including parent."""
+        if self.parent:
+            return f"{self.parent.get_full_path()} > {self.name}"
+        return self.name
+    
+    @property
+    def is_parent(self):
+        """Check if category has children."""
+        return self.children.exists()
+
+
 class Article(models.Model):
     """Article model for CMS."""
     
@@ -36,11 +85,20 @@ class Article(models.Model):
         default='fetched'
     )
     
-    # Category
+    # Source Category (keep existing - reliable_sources, trends, subscriptions)
     category = models.CharField(
         max_length=20,
         choices=CATEGORY_CHOICES,
-        default='reliable_sources'
+        default='reliable_sources',
+        help_text="Article source type"
+    )
+    
+    # Content Categories (many-to-many for sports categories)
+    categories = models.ManyToManyField(
+        'Category',
+        related_name='articles',
+        blank=True,
+        help_text="Content categories (Cricket, Football, etc.)"
     )
     
     # Trend data (for trends category)

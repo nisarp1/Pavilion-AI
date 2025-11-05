@@ -5,11 +5,13 @@ from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
-from .models import Article
+from .models import Article, Category
 from .serializers import (
     ArticleSerializer,
     ArticleListSerializer,
     ArticleGenerateSerializer,
+    CategorySerializer,
+    CategoryListSerializer,
 )
 
 
@@ -128,4 +130,91 @@ class ArticleViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(article)
         return Response(serializer.data)
+
+
+class CategoryViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing categories and subcategories.
+    """
+    queryset = Category.objects.all()
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return CategoryListSerializer
+        return CategorySerializer
+    
+    def get_queryset(self):
+        queryset = Category.objects.all()
+        parent_only = self.request.query_params.get('parent_only', None)
+        is_active = self.request.query_params.get('is_active', None)
+        
+        if parent_only == 'true':
+            # Return only parent categories (no parent)
+            queryset = queryset.filter(parent__isnull=True)
+        
+        if is_active == 'true':
+            queryset = queryset.filter(is_active=True)
+        elif is_active == 'false':
+            queryset = queryset.filter(is_active=False)
+        
+        return queryset.order_by('order', 'name')
+    
+    @action(detail=True, methods=['get'])
+    def children(self, request, pk=None):
+        """Get all children of a category."""
+        category = self.get_object()
+        children = category.children.filter(is_active=True).order_by('order', 'name')
+        serializer = CategoryListSerializer(children, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def tree(self, request):
+        """Get category tree with all parents and children."""
+        parents = Category.objects.filter(parent__isnull=True, is_active=True).order_by('order', 'name')
+        serializer = CategorySerializer(parents, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['post'])
+    def batch_update(self, request):
+        """Batch update category order and parent relationships."""
+        updates = request.data.get('updates', [])
+        
+        if not isinstance(updates, list):
+            return Response(
+                {'error': 'updates must be a list'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            for update in updates:
+                category_id = update.get('id')
+                if not category_id:
+                    continue
+                
+                category = Category.objects.get(id=category_id)
+                
+                if 'order' in update:
+                    category.order = update['order']
+                
+                if 'parent' in update:
+                    parent_id = update['parent']
+                    if parent_id:
+                        category.parent = Category.objects.get(id=parent_id)
+                    else:
+                        category.parent = None
+                
+                category.save()
+            
+            return Response({'message': 'Categories updated successfully'})
+        except Category.DoesNotExist:
+            return Response(
+                {'error': 'Category not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 

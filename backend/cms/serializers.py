@@ -3,7 +3,7 @@ Serializers for CMS API.
 """
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Article
+from .models import Article, Category
 from workers.tasks import generate_article_task
 
 
@@ -15,17 +15,74 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
 
 
+class CategorySerializer(serializers.ModelSerializer):
+    """Category serializer with nested children."""
+    children = serializers.SerializerMethodField()
+    parent_name = serializers.CharField(source='parent.name', read_only=True, allow_null=True)
+    article_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Category
+        fields = [
+            'id', 'name', 'slug', 'description', 'parent', 'parent_name',
+            'order', 'is_active', 'children', 'article_count',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'slug', 'created_at', 'updated_at']
+    
+    def validate_parent(self, value):
+        """Validate parent category."""
+        if value and value.id == getattr(self.instance, 'id', None):
+            raise serializers.ValidationError("A category cannot be its own parent.")
+        return value
+    
+    def get_children(self, obj):
+        """Get child categories."""
+        children = obj.children.filter(is_active=True).order_by('order', 'name')
+        return CategorySerializer(children, many=True).data
+    
+    def get_article_count(self, obj):
+        """Get count of articles in this category."""
+        return obj.articles.count()
+
+
+class CategoryListSerializer(serializers.ModelSerializer):
+    """Lightweight category serializer for lists."""
+    parent_name = serializers.CharField(source='parent.name', read_only=True)
+    children_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Category
+        fields = [
+            'id', 'name', 'slug', 'parent', 'parent_name',
+            'order', 'is_active', 'children_count'
+        ]
+    
+    def get_children_count(self, obj):
+        """Get count of child categories."""
+        return obj.children.filter(is_active=True).count()
+
+
 class ArticleSerializer(serializers.ModelSerializer):
     """Article serializer."""
     author_name = serializers.CharField(source='author.username', read_only=True)
     editor_name = serializers.CharField(source='editor.username', read_only=True)
     featured_image_url = serializers.SerializerMethodField()
     og_image_url = serializers.SerializerMethodField()
+    categories = CategoryListSerializer(many=True, read_only=True)
+    category_ids = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=Category.objects.filter(is_active=True),
+        source='categories',
+        write_only=True,
+        required=False
+    )
     
     class Meta:
         model = Article
         fields = [
             'id', 'title', 'slug', 'summary', 'summary_english', 'body', 'status', 'category',
+            'categories', 'category_ids',
             'author', 'author_name', 'editor', 'editor_name',
             'featured_image', 'featured_image_url',
             'meta_title', 'meta_description',
@@ -60,11 +117,13 @@ class ArticleListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for article lists."""
     author_name = serializers.CharField(source='author.username', read_only=True)
     featured_image_url = serializers.SerializerMethodField()
+    categories = CategoryListSerializer(many=True, read_only=True)
     
     class Meta:
         model = Article
         fields = [
             'id', 'title', 'slug', 'summary', 'status', 'category',
+            'categories',
             'author_name', 'created_at', 'updated_at', 'published_at',
             'source_url', 'featured_image_url', 'trend_data',
         ]

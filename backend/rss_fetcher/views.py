@@ -7,7 +7,8 @@ from rest_framework.response import Response
 from django.utils import timezone
 from .models import RSSFeed
 from .serializers import RSSFeedSerializer
-from .tasks import fetch_single_feed_task, fetch_single_rss_feed, fetch_rss_feeds, fetch_google_trends_sports, enhance_articles_with_google_trends
+from .tasks import fetch_single_feed_task, fetch_single_rss_feed, fetch_rss_feeds, fetch_google_trends_sports, enhance_articles_with_google_trends, _get_trending_topics_from_google_trends
+import logging
 
 
 class RSSFeedViewSet(viewsets.ModelViewSet):
@@ -122,4 +123,91 @@ class RSSFeedViewSet(viewsets.ModelViewSet):
             return Response({
                 'error': str(e)
             }, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=False, methods=['get'], url_path='realtime-trends')
+    def realtime_trends(self, request):
+        """
+        Get real-time Google Trends data for display.
+        Returns trending topics without creating articles.
+        """
+        logger = logging.getLogger(__name__)
+        
+        try:
+            # Get trending topics
+            trending_topics = _get_trending_topics_from_google_trends()
+            
+            # Ensure we always return a list
+            if not isinstance(trending_topics, list):
+                trending_topics = list(trending_topics) if trending_topics else []
+            
+            # Ensure we have at least fallback topics
+            if not trending_topics:
+                from .tasks import _get_fallback_trends
+                trending_topics = _get_fallback_trends()
+            
+            logger.info(f"Returning {len(trending_topics)} trending topics")
+            
+            # Format response
+            return Response({
+                'trending_topics': trending_topics,
+                'count': len(trending_topics),
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Error fetching real-time trends: {str(e)}")
+            import traceback
+            logger.debug(traceback.format_exc())
+            # Return fallback topics even on error
+            from .tasks import _get_fallback_trends
+            fallback = _get_fallback_trends()
+            return Response({
+                'error': str(e),
+                'trending_topics': fallback,
+                'count': len(fallback),
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)  # Still return 200 with fallback data
+    
+    @action(detail=False, methods=['get'], url_path='twitter-trends')
+    def twitter_trends(self, request):
+        """
+        Get real-time Twitter trends for sports in India.
+        Returns trending topics without creating articles.
+        """
+        logger = logging.getLogger(__name__)
+        
+        try:
+            # Get Twitter trending topics for sports in India
+            from .tasks import _get_twitter_trends_sports_india
+            trending_topics = _get_twitter_trends_sports_india()
+            
+            # Ensure we always return a list
+            if not isinstance(trending_topics, list):
+                trending_topics = list(trending_topics) if trending_topics else []
+            
+            # Ensure we have at least fallback topics
+            if not trending_topics:
+                from .tasks import _get_twitter_fallback_trends
+                trending_topics = _get_twitter_fallback_trends()
+            
+            logger.info(f"Returning {len(trending_topics)} Twitter trending topics")
+            
+            # Format response
+            return Response({
+                'trending_topics': trending_topics,
+                'count': len(trending_topics),
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Error fetching Twitter trends: {str(e)}")
+            import traceback
+            logger.debug(traceback.format_exc())
+            # Return fallback topics even on error
+            from .tasks import _get_twitter_fallback_trends
+            fallback = _get_twitter_fallback_trends()
+            return Response({
+                'error': str(e),
+                'trending_topics': fallback,
+                'count': len(fallback),
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_200_OK)  # Still return 200 with fallback data
 

@@ -3,7 +3,8 @@ import { useDispatch, useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
 import { fetchArticles, fetchTrends, fetchAllFeeds, generateArticle, publishArticle, archiveArticle, updateArticle } from '../../store/slices/articleSlice'
 import { format } from 'date-fns'
-import { FiEdit, FiPlay, FiCheck, FiArchive, FiRefreshCw, FiMoreVertical, FiEye, FiTrash2, FiClock } from 'react-icons/fi'
+import { FiEdit, FiPlay, FiCheck, FiArchive, FiRefreshCw, FiMoreVertical, FiEye, FiTrash2, FiClock, FiExternalLink } from 'react-icons/fi'
+import GoogleTrendsWidget from './GoogleTrendsWidget'
 
 function ArticleList() {
   const dispatch = useDispatch()
@@ -315,6 +316,9 @@ function ArticleList() {
         </div>
       </div>
 
+      {/* Google Trends Widget - Show only on Trends tab */}
+      {activeTab === 'trends' && <GoogleTrendsWidget />}
+
       {/* Bulk Actions Bar */}
       {selectedArticles.size > 0 && (
         <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3 flex items-center justify-between">
@@ -410,6 +414,22 @@ function ArticleList() {
                             </Link>
                             {getStatusBadge(article.status)}
                           </div>
+                          {article.source_url && (
+                            <div className="text-xs text-gray-400 mt-1">
+                              <a
+                                href={article.source_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="hover:text-blue-600 flex items-center gap-1"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <FiExternalLink size={10} />
+                                {article.source_url.length > 60 
+                                  ? article.source_url.substring(0, 60) + '...' 
+                                  : article.source_url}
+                              </a>
+                            </div>
+                          )}
                           <div className="flex items-center gap-3 text-xs text-gray-500">
                             <Link
                               to={`/articles/${article.id}/edit`}
@@ -429,6 +449,21 @@ function ArticleList() {
                                   }}
                                 >
                                   View
+                                </a>
+                              </>
+                            )}
+                            {article.source_url && (
+                              <>
+                                <span>|</span>
+                                <a
+                                  href={article.source_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="hover:text-blue-600 flex items-center gap-1"
+                                  title="View source article"
+                                >
+                                  <FiExternalLink size={12} />
+                                  Source
                                 </a>
                               </>
                             )}
@@ -481,24 +516,44 @@ function ArticleList() {
                           </button>
                         )}
                         {article.status === 'draft' && (
-                          <button
-                            onClick={() => handlePublish(article.id)}
-                            className="px-3 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 transition-colors text-xs font-medium flex items-center gap-1"
-                            title="Publish"
-                          >
-                            <FiCheck size={12} />
-                            Publish
-                          </button>
+                          <>
+                            <button
+                              onClick={() => handlePublish(article.id)}
+                              className="px-3 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 transition-colors text-xs font-medium flex items-center gap-1"
+                              title="Publish"
+                            >
+                              <FiCheck size={12} />
+                              Publish
+                            </button>
+                            <Link
+                              to={`/articles/${article.id}/edit`}
+                              className="px-3 py-1.5 bg-primary-600 text-white rounded hover:bg-primary-700 transition-colors text-xs font-medium flex items-center gap-1"
+                              title="Edit Article"
+                            >
+                              <FiEdit size={12} />
+                              Edit
+                            </Link>
+                          </>
                         )}
                         {article.status === 'published' && (
-                          <button
-                            onClick={() => handleArchive(article.id)}
-                            className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors text-xs font-medium flex items-center gap-1"
-                            title="Move to Trash"
-                          >
-                            <FiTrash2 size={12} />
-                            Trash
-                          </button>
+                          <>
+                            <Link
+                              to={`/articles/${article.id}/edit`}
+                              className="px-3 py-1.5 bg-primary-600 text-white rounded hover:bg-primary-700 transition-colors text-xs font-medium flex items-center gap-1"
+                              title="Edit Article"
+                            >
+                              <FiEdit size={12} />
+                              Edit
+                            </Link>
+                            <button
+                              onClick={() => handleArchive(article.id)}
+                              className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors text-xs font-medium flex items-center gap-1"
+                              title="Move to Trash"
+                            >
+                              <FiTrash2 size={12} />
+                              Trash
+                            </button>
+                          </>
                         )}
                         <div className="relative">
                           <button

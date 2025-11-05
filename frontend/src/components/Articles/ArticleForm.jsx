@@ -1,8 +1,11 @@
-import { useState, useEffect } from 'react'
-import { CKEditor } from '@ckeditor/ckeditor5-react'
-import ClassicEditor from '@ckeditor/ckeditor5-build-classic'
+import { useState, useEffect, useRef } from 'react'
+import ReactQuill from 'react-quill'
+import 'react-quill/dist/quill.snow.css'
+import Quill from 'quill'
+import { convertUrlToEmbed } from '../../utils/embedUtils'
 
 function ArticleForm({ initialData, onSubmit, saving, submitLabel }) {
+  const quillRef = useRef(null)
   const [formData, setFormData] = useState({
     title: initialData.title || '',
     summary: initialData.summary || '',
@@ -27,14 +30,63 @@ function ArticleForm({ initialData, onSubmit, saving, submitLabel }) {
     }
   }, [initialData])
 
+  // Simple paste handler for embeds
+  useEffect(() => {
+    if (!quillRef.current) return
+    
+    const quill = quillRef.current.getEditor()
+    if (!quill || !quill.root) return
+    
+    const handlePaste = (e) => {
+      const text = e.clipboardData?.getData('text/plain')
+      if (text && /youtube\.com|youtu\.be|twitter\.com|x\.com|instagram\.com|facebook\.com/i.test(text.trim())) {
+        e.preventDefault()
+        const url = text.trim()
+        const embedHtml = convertUrlToEmbed(url)
+        if (embedHtml) {
+          const range = quill.getSelection(true) || { index: quill.getLength(), length: 0 }
+          
+          // Insert newline and embed directly into DOM
+          const editorRoot = quill.root
+          const embedDiv = document.createElement('div')
+          embedDiv.className = 'ql-video-embed'
+          embedDiv.setAttribute('contenteditable', 'false')
+          embedDiv.innerHTML = embedHtml
+          
+          // Insert before the last child or append
+          const lastChild = editorRoot.lastElementChild
+          if (lastChild) {
+            lastChild.insertAdjacentElement('afterend', embedDiv)
+          } else {
+            editorRoot.appendChild(embedDiv)
+          }
+          
+          // Add spacing paragraph
+          const spacer = document.createElement('p')
+          spacer.innerHTML = '<br>'
+          embedDiv.insertAdjacentElement('afterend', spacer)
+          
+          // Update Quill and move cursor
+          setTimeout(() => {
+            quill.update('user')
+            const newLength = quill.getLength()
+            quill.setSelection(newLength, 'silent')
+          }, 10)
+        }
+      }
+    }
+    
+    quill.root.addEventListener('paste', handlePaste, true)
+    return () => quill.root.removeEventListener('paste', handlePaste, true)
+  }, [formData.body])
+
   const handleChange = (e) => {
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
-  const handleBodyChange = (event, editor) => {
-    const data = editor.getData()
-    setFormData((prev) => ({ ...prev, body: data }))
+  const handleBodyChange = (content) => {
+    setFormData((prev) => ({ ...prev, body: content }))
   }
 
   const handleSubmit = (e) => {
@@ -112,6 +164,10 @@ function ArticleForm({ initialData, onSubmit, saving, submitLabel }) {
           value={formData.title}
           onChange={handleChange}
           required
+          lang="en"
+          autoComplete="off"
+          spellCheck="true"
+          style={{ imeMode: 'auto' }}
           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
         />
       </div>
@@ -127,6 +183,10 @@ function ArticleForm({ initialData, onSubmit, saving, submitLabel }) {
           value={formData.summary}
           onChange={handleChange}
           rows={3}
+          lang="en"
+          autoComplete="off"
+          spellCheck="true"
+          style={{ imeMode: 'auto' }}
           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
         />
       </div>
@@ -135,28 +195,39 @@ function ArticleForm({ initialData, onSubmit, saving, submitLabel }) {
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">Body *</label>
         <div className="border border-gray-300 rounded-lg">
-          <CKEditor
-            editor={ClassicEditor}
-            data={formData.body}
-            onChange={handleBodyChange}
-            config={{
+          <ReactQuill
+              ref={quillRef}
+              theme="snow"
+              value={formData.body}
+              onChange={handleBodyChange}
+            modules={{
               toolbar: [
-                'heading',
-                '|',
-                'bold',
-                'italic',
-                'link',
-                'bulletedList',
-                'numberedList',
-                '|',
-                'blockQuote',
-                'insertTable',
-                '|',
-                'undo',
-                'redo',
+                [{ 'header': [1, 2, 3, false] }],
+                ['bold', 'italic', 'underline', 'strike'],
+                [{ 'color': [] }, { 'background': [] }],
+                [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                [{ 'align': [] }],
+                ['link', 'image'],
+                ['clean'],
+                ['code-block']
               ],
+              clipboard: {
+                matchVisual: false
+              }
             }}
-          />
+              formats={[
+                'header',
+                'bold', 'italic', 'underline', 'strike',
+                'color', 'background',
+                'list', 'bullet',
+                'align',
+                'link', 'image',
+                'code-block'
+              ]}
+              style={{ height: '400px', marginBottom: '50px' }}
+              placeholder="Write your article content here... (Paste YouTube or social media links to auto-embed)"
+              className="text-sm"
+            />
         </div>
       </div>
 

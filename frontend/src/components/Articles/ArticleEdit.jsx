@@ -1,16 +1,21 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { fetchArticle, updateArticle, publishArticle } from '../../store/slices/articleSlice'
+import { fetchCategoryTree } from '../../store/slices/categorySlice'
 import { FiImage, FiUser, FiLink, FiTag, FiExternalLink } from 'react-icons/fi'
-import { CKEditor } from '@ckeditor/ckeditor5-react'
-import ClassicEditor from '@ckeditor/ckeditor5-build-classic'
+import ReactQuill from 'react-quill'
+import 'react-quill/dist/quill.snow.css'
+import Quill from 'quill'
+import { convertUrlToEmbed } from '../../utils/embedUtils'
 
 function ArticleEdit() {
   const { id } = useParams()
   const navigate = useNavigate()
   const dispatch = useDispatch()
   const { currentArticle, loading } = useSelector((state) => state.articles)
+  const { categoryTree } = useSelector((state) => state.categories)
+  const quillRef = useRef(null)
   const [saving, setSaving] = useState(false)
   const [formData, setFormData] = useState({
     title: '',
@@ -19,6 +24,7 @@ function ArticleEdit() {
     body: '',
     status: 'draft',
     category: 'reliable_sources',
+    category_ids: [],
     author: '',
     meta_title: '',
     meta_description: '',
@@ -27,6 +33,7 @@ function ArticleEdit() {
   })
   useEffect(() => {
     dispatch(fetchArticle(id))
+    dispatch(fetchCategoryTree())
   }, [dispatch, id])
 
   useEffect(() => {
@@ -38,6 +45,7 @@ function ArticleEdit() {
         body: currentArticle.body || '',
         status: currentArticle.status || 'draft',
         category: currentArticle.category || 'reliable_sources',
+        category_ids: currentArticle.categories?.map(cat => cat.id) || [],
         author: currentArticle.author || '',
         meta_title: currentArticle.meta_title || '',
         meta_description: currentArticle.meta_description || '',
@@ -47,14 +55,63 @@ function ArticleEdit() {
     }
   }, [currentArticle])
 
+  // Simple paste handler for embeds
+  useEffect(() => {
+    if (!quillRef.current) return
+    
+    const quill = quillRef.current.getEditor()
+    if (!quill || !quill.root) return
+    
+    const handlePaste = (e) => {
+      const text = e.clipboardData?.getData('text/plain')
+      if (text && /youtube\.com|youtu\.be|twitter\.com|x\.com|instagram\.com|facebook\.com/i.test(text.trim())) {
+        e.preventDefault()
+        const url = text.trim()
+        const embedHtml = convertUrlToEmbed(url)
+        if (embedHtml) {
+          const range = quill.getSelection(true) || { index: quill.getLength(), length: 0 }
+          
+          // Insert newline and embed directly into DOM
+          const editorRoot = quill.root
+          const embedDiv = document.createElement('div')
+          embedDiv.className = 'ql-video-embed'
+          embedDiv.setAttribute('contenteditable', 'false')
+          embedDiv.innerHTML = embedHtml
+          
+          // Insert before the last child or append
+          const lastChild = editorRoot.lastElementChild
+          if (lastChild) {
+            lastChild.insertAdjacentElement('afterend', embedDiv)
+          } else {
+            editorRoot.appendChild(embedDiv)
+          }
+          
+          // Add spacing paragraph
+          const spacer = document.createElement('p')
+          spacer.innerHTML = '<br>'
+          embedDiv.insertAdjacentElement('afterend', spacer)
+          
+          // Update Quill and move cursor
+          setTimeout(() => {
+            quill.update('user')
+            const newLength = quill.getLength()
+            quill.setSelection(newLength, 'silent')
+          }, 10)
+        }
+      }
+    }
+    
+    quill.root.addEventListener('paste', handlePaste, true)
+    return () => quill.root.removeEventListener('paste', handlePaste, true)
+  }, [formData.body])
+
   const handleChange = (e) => {
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
-  const handleBodyChange = (event, editor) => {
-    const data = editor.getData()
-    setFormData((prev) => ({ ...prev, body: data }))
+  const handleBodyChange = (content) => {
+    setFormData((prev) => ({ ...prev, body: content }))
   }
 
   const handleStatusChange = (newStatus) => {
@@ -106,8 +163,8 @@ function ArticleEdit() {
     <div className="max-w-7xl mx-auto">
       {/* Header with Publish/Draft buttons */}
       <div className="mb-6 flex justify-between items-center border-b border-gray-200 pb-4">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-800">Edit Article</h1>
+    <div>
+        <h1 className="text-3xl font-bold text-gray-800">Edit Article</h1>
         </div>
         <div className="flex gap-3">
           <button
@@ -146,6 +203,10 @@ function ArticleEdit() {
               value={formData.title}
               onChange={handleChange}
               required
+              lang="en"
+              autoComplete="off"
+              spellCheck="true"
+              style={{ imeMode: 'auto' }}
               className="w-full px-4 py-3 text-lg border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               placeholder="Enter article title"
             />
@@ -155,28 +216,40 @@ function ArticleEdit() {
           <div className="bg-white rounded-lg shadow p-6">
             <label className="block text-sm font-medium text-gray-700 mb-2">Content *</label>
             <div className="border border-gray-300 rounded-lg">
-              <CKEditor
-                editor={ClassicEditor}
-                data={formData.body}
-                onChange={handleBodyChange}
-                config={{
+              <ReactQuill
+                  ref={quillRef}
+                  theme="snow"
+                  value={formData.body}
+                  onChange={handleBodyChange}
+                modules={{
                   toolbar: [
-                    'heading',
-                    '|',
-                    'bold',
-                    'italic',
-                    'link',
-                    'bulletedList',
-                    'numberedList',
-                    '|',
-                    'blockQuote',
-                    'insertTable',
-                    '|',
-                    'undo',
-                    'redo',
+                    [{ 'header': [1, 2, 3, false] }],
+                    ['bold', 'italic', 'underline', 'strike'],
+                    [{ 'color': [] }, { 'background': [] }],
+                    [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                    [{ 'align': [] }],
+                    ['link', 'image'],
+                    ['clean'],
+                    ['code-block']
                   ],
+                  clipboard: {
+                    matchVisual: false,
+                    matchers: []
+                  }
                 }}
-              />
+                  formats={[
+                    'header',
+                    'bold', 'italic', 'underline', 'strike',
+                    'color', 'background',
+                    'list', 'bullet',
+                    'align',
+                    'link', 'image',
+                    'code-block'
+                  ]}
+                  style={{ height: '400px', marginBottom: '50px' }}
+                  placeholder="Write your article content here... (Paste YouTube or social media links to auto-embed)"
+                  className="text-sm"
+                />
             </div>
           </div>
 
@@ -191,6 +264,10 @@ function ArticleEdit() {
               value={formData.summary}
               onChange={handleChange}
               rows={4}
+              lang="en"
+              autoComplete="off"
+              spellCheck="true"
+              style={{ imeMode: 'auto' }}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               placeholder="Write an excerpt..."
             />
@@ -368,8 +445,8 @@ function ArticleEdit() {
                     rel="noopener noreferrer"
                     className="text-sm text-blue-600 hover:text-blue-800 hover:underline flex-1 truncate"
                   >
-                    {currentArticle.source_url}
-                  </a>
+              {currentArticle.source_url}
+            </a>
                   <FiExternalLink size={14} className="text-gray-400 flex-shrink-0" />
                 </div>
                 <p className="text-xs text-gray-500">Original source URL for this article.</p>
@@ -377,11 +454,11 @@ function ArticleEdit() {
             </div>
           )}
 
-          {/* Categories */}
+          {/* Source Category (reliable_sources, trends, subscriptions) */}
           <div className="bg-white rounded-lg shadow p-6">
             <h3 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide flex items-center gap-2">
               <FiTag size={16} />
-              Categories
+              Source
             </h3>
             <div className="space-y-2">
               {categoryOptions.map((option) => (
@@ -398,6 +475,71 @@ function ArticleEdit() {
                 </label>
               ))}
             </div>
+            <p className="mt-3 text-xs text-gray-500">Article source type</p>
+          </div>
+
+          {/* Content Categories (Cricket, Football, etc.) */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide flex items-center gap-2">
+              <FiTag size={16} />
+              Content Categories
+            </h3>
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {categoryTree.length === 0 ? (
+                <p className="text-sm text-gray-500">
+                  No categories available.{' '}
+                  <Link to="/categories" className="text-blue-600 hover:underline">
+                    Create categories
+                  </Link>
+                </p>
+              ) : (
+                categoryTree.map((parentCategory) => (
+                  <div key={parentCategory.id} className="space-y-1">
+                    <label className="flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={formData.category_ids.includes(parentCategory.id)}
+                        onChange={(e) => {
+                          const newIds = e.target.checked
+                            ? [...formData.category_ids, parentCategory.id]
+                            : formData.category_ids.filter(id => id !== parentCategory.id)
+                          setFormData({ ...formData, category_ids: newIds })
+                        }}
+                        className="w-4 h-4 text-primary-600 focus:ring-primary-500"
+                      />
+                      <span className="ml-2 text-sm font-medium text-gray-900">
+                        {parentCategory.name}
+                      </span>
+                    </label>
+                    {parentCategory.children && parentCategory.children.length > 0 && (
+                      <div className="ml-6 space-y-1">
+                        {parentCategory.children.map((childCategory) => (
+                          <label key={childCategory.id} className="flex items-center">
+                            <input
+                              type="checkbox"
+                              checked={formData.category_ids.includes(childCategory.id)}
+                              onChange={(e) => {
+                                const newIds = e.target.checked
+                                  ? [...formData.category_ids, childCategory.id]
+                                  : formData.category_ids.filter(id => id !== childCategory.id)
+                                setFormData({ ...formData, category_ids: newIds })
+                              }}
+                              className="w-4 h-4 text-primary-600 focus:ring-primary-500"
+                            />
+                            <span className="ml-2 text-sm text-gray-700">
+                              {childCategory.name}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+            <p className="mt-3 text-xs text-gray-500">
+              Select content categories (Cricket, Football, etc.)
+            </p>
           </div>
         </div>
       </div>

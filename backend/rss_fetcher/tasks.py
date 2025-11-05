@@ -13,6 +13,8 @@ from slugify import slugify
 import json
 import time
 import requests
+from bs4 import BeautifulSoup
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -216,21 +218,912 @@ def fetch_single_feed_task(feed_id):
 @shared_task
 def fetch_google_trends_sports():
     """
-    Fetch last 1 hour sports articles from NewsAPI for India.
-    Falls back to RSS feeds if NewsAPI not configured.
-    Articles are automatically enriched with Google Trends data.
+    Fetch trending sports articles using Google Trends to find trending topics,
+    then fetching articles from NewsAPI or Google News based on those topics.
+    Falls back to RSS feeds if APIs not configured.
     """
-    logger.info("Starting Sports Trends fetch")
+    logger.info("Starting Sports Trends fetch using Google Trends")
     
-    # Try NewsAPI first for India sports
-    if settings.NEWS_API_KEY:
-        result = _fetch_newsapi_india_sports()
+    # Step 1: Get trending topics from Google Trends
+    trending_topics = _get_trending_topics_from_google_trends()
+    
+    # Fallback: Use common sports keywords if Google Trends fails
+    if not trending_topics or len(trending_topics) == 0:
+        logger.info("Google Trends returned no topics. Using fallback sports keywords.")
+        # Use current popular sports keywords as fallback
+        trending_topics = [
+            'cricket', 'football', 'ipl', 'premier league', 'world cup',
+            'soccer', 'champions league', 'india cricket', 'england cricket',
+            'football match', 'cricket match', 'sports news'
+        ]
+        logger.info(f"Using fallback keywords: {trending_topics[:5]}")
+    
+    if trending_topics and len(trending_topics) > 0:
+        logger.info(f"Found {len(trending_topics)} trending topics: {trending_topics[:5]}")
+        
+        # Step 2: Fetch articles based on trending topics
+        if settings.NEWS_API_KEY:
+            result = _fetch_articles_from_trending_topics(trending_topics)
+            if result['success'] and result['articles_created'] > 0:
+                logger.info(f"Successfully created {result['articles_created']} articles from trending topics")
+                return result
+            logger.info("NewsAPI returned no articles for trending topics, trying Google News")
+        else:
+            logger.info("NewsAPI not configured, trying Google News")
+        
+        # Try Google News search if NewsAPI not available or failed
+        result = _fetch_articles_from_google_news(trending_topics)
         if result['success'] and result['articles_created'] > 0:
+            logger.info(f"Successfully created {result['articles_created']} articles from Google News")
             return result
-        logger.info("NewsAPI returned no articles, falling back to RSS")
+        logger.info("Google News returned no articles, falling back to RSS")
     
-    # Fallback to RSS feeds
+    # Fallback to RSS feeds if all methods fail
+    logger.info("All trending methods failed, falling back to RSS feeds")
     return _fetch_sports_rss()
+
+
+def _get_trending_topics_from_google_trends():
+    """
+    Get sports-related trending topics from Google Trends for India.
+    Uses Google Trends RSS feed for sports category (category=17) to get actual trending data.
+    """
+    trending_topics = []
+    
+    # Strategy 1: Use Google Trends RSS feed for Sports category (category=17) in India
+    # This gives us the ACTUAL trending sports topics from Google Trends
+    try:
+        logger.info("Fetching Google Trends RSS for Sports category in India...")
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/rss+xml, application/xml, */*',
+            'Accept-Language': 'en-US,en;q=0.9',
+        }
+        
+        # Google Trends RSS for Sports category in India (category=17)
+        rss_url = 'https://trends.google.com/trends/trendingsearches/daily/rss?geo=IN&category=17'
+        
+        response = requests.get(rss_url, headers=headers, timeout=15)
+        if response.status_code == 200 and response.content:
+            feed = feedparser.parse(response.content)
+            if hasattr(feed, 'entries') and feed.entries:
+                logger.info(f"Found {len(feed.entries)} sports trending entries from Google Trends RSS")
+                for entry in feed.entries[:15]:
+                    title = entry.get('title', '').strip()
+                    # Clean up title - remove common prefixes
+                    title = re.sub(r'^(Google Trends|Trending|Trends)\s*[-:]\s*', '', title, flags=re.IGNORECASE)
+                    title = title.strip()
+                    
+                    if title and len(title) > 3 and len(title) < 100:
+                        if title not in trending_topics:
+                            trending_topics.append(title)
+                            logger.info(f"Found sports trending topic: {title}")
+                
+                if len(trending_topics) >= 5:
+                    logger.info(f"Found {len(trending_topics)} sports trending topics from Google Trends RSS")
+                    return trending_topics[:10]
+        else:
+            logger.warning(f"Google Trends RSS returned status {response.status_code}")
+    except Exception as e:
+        logger.debug(f"Google Trends RSS failed: {str(e)}")
+    
+    # Strategy 2: Try pytrends API for sports category (if available)
+    if PYTRENDS_AVAILABLE:
+        try:
+            logger.info("Trying pytrends API for sports trends in India...")
+            pytrends = TrendReq(hl='en-IN', tz=330)
+            time.sleep(2)  # Initial delay to avoid rate limits
+            
+            # Try to get trending searches
+            try:
+                trending_searches_india = pytrends.trending_searches(pn='india')
+            except Exception as method_error:
+                logger.debug(f"trending_searches failed: {str(method_error)}")
+                trending_searches_india = None
+            
+            if trending_searches_india is not None and len(trending_searches_india) > 0:
+                logger.info(f"Got {len(trending_searches_india)} trending searches from India")
+                sports_keywords = ['cricket', 'football', 'soccer', 'ipl', 'premier', 'league', 'match', 'sport', 'world cup', 'championship', 'tournament', 'team', 'player', 'goal', 'wicket', 'run', 'score', 'bcci', 'kohli', 'dhoni', 'messi', 'ronaldo']
+                
+                # Handle both DataFrame and list formats
+                if hasattr(trending_searches_india, 'iterrows'):
+                    for idx, row in trending_searches_india.head(25).iterrows():
+                        try:
+                            trend = str(row.iloc[0]) if hasattr(row, 'iloc') else str(row[0])
+                            trend_lower = trend.lower()
+                            # Filter for sports-related only
+                            if any(keyword in trend_lower for keyword in sports_keywords):
+                                if trend and trend.strip() and trend not in trending_topics:
+                                    trending_topics.append(trend.strip())
+                                    logger.info(f"Found sports trending topic: {trend}")
+                        except Exception as e:
+                            logger.debug(f"Error processing row: {str(e)}")
+                            continue
+                elif isinstance(trending_searches_india, list):
+                    for trend in trending_searches_india[:25]:
+                        try:
+                            trend_str = str(trend) if not isinstance(trend, str) else trend
+                            trend_lower = trend_str.lower()
+                            if any(keyword in trend_lower for keyword in sports_keywords):
+                                if trend_str and trend_str.strip() and trend_str not in trending_topics:
+                                    trending_topics.append(trend_str.strip())
+                                    logger.info(f"Found sports trending topic: {trend_str}")
+                        except Exception as e:
+                            logger.debug(f"Error processing trend: {str(e)}")
+                            continue
+                
+                if trending_topics:
+                    logger.info(f"Found {len(trending_topics)} sports trending topics from pytrends: {trending_topics[:10]}")
+                    return trending_topics[:10]
+        except Exception as e:
+            logger.warning(f"pytrends API failed: {str(e)}")
+    
+    # Strategy 3: Try web scraping Google Trends sports page
+    logger.info("Trying to scrape Google Trends sports page...")
+    scraped_topics = _scrape_google_trends_sports()
+    if scraped_topics:
+        logger.info(f"Found {len(scraped_topics)} sports trending topics from scraping: {scraped_topics[:10]}")
+        return scraped_topics[:10]
+    
+    # Final fallback
+    logger.warning("No sports trending topics found, returning fallback topics")
+    return _get_fallback_trends()
+
+
+def _scrape_google_trends_sports():
+    """
+    Scrape Google Trends for sports category (category=17) in India.
+    Gets the actual sports trending topics from Google Trends website.
+    """
+    trending_topics = []
+    sports_keywords = ['cricket', 'football', 'soccer', 'ipl', 'premier', 'league', 'match', 'sport', 'world cup', 'championship', 'tournament', 'team', 'player', 'goal', 'wicket', 'run', 'score', 'bcci', 'kohli', 'dhoni', 'messi', 'ronaldo']
+    
+    try:
+        logger.info("Attempting to scrape Google Trends Sports page directly...")
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+        }
+        
+        # Strategy 1: Scrape Google Trends Sports category page (category=17) for India
+        try:
+            logger.info("Trying Google Trends Sports category page (India)...")
+            trends_urls = [
+                'https://trends.google.com/trending?geo=IN&hl=en-US&hours=24&category=17',  # Sports category
+                'https://trends.google.com/trending?geo=IN&hl=en-US&hours=24',  # All categories as fallback
+            ]
+            
+            for trends_url in trends_urls:
+                try:
+                    logger.info(f"Scraping Google Trends page: {trends_url}")
+                    response = requests.get(trends_url, headers=headers, timeout=15, allow_redirects=True)
+                    
+                    if response.status_code == 200:
+                        html_content = response.text
+                        soup = BeautifulSoup(html_content, 'html.parser')
+                        
+                        # Method 1: Look for embedded JSON data in script tags
+                        # Google Trends often embeds data in script tags or window variables
+                        script_tags = soup.find_all('script')
+                        for script in script_tags:
+                            script_content = script.string if script.string else ''
+                            if not script_content:
+                                continue
+                            
+                            # Look for various JSON patterns in scripts
+                            json_patterns = [
+                                r'window\.__INITIAL_STATE__\s*=\s*({.*?});',
+                                r'window\.__DATA__\s*=\s*({.*?});',
+                                r'window\.__INITIAL_DATA__\s*=\s*({.*?});',
+                                r'"trendingSearchesDays":\s*(\[.*?\])',
+                                r'"trendingSearches":\s*(\[.*?\])',
+                                r'"default":\s*\{[^}]*"trendingSearchesDays":\s*(\[.*?\])',
+                                r'"trends":\s*(\[.*?\])',
+                            ]
+                            
+                            for pattern in json_patterns:
+                                matches = re.finditer(pattern, script_content, re.DOTALL)
+                                for match in matches:
+                                    try:
+                                        json_str = match.group(1) if match.groups() else match.group(0)
+                                        
+                                        # Try to parse as JSON
+                                        if json_str.startswith('[') or json_str.startswith('{'):
+                                            data = json.loads(json_str)
+                                            
+                                            # Handle array of trends
+                                            if isinstance(data, list):
+                                                for item in data[:25]:
+                                                    if isinstance(item, dict):
+                                                        # Try various possible keys
+                                                        title = (item.get('title', {}).get('query', '') if isinstance(item.get('title'), dict) 
+                                                               else item.get('title', '') or item.get('query', '') or 
+                                                               item.get('name', '') or item.get('articleTitle', ''))
+                                                        if title and title.strip():
+                                                            title = title.strip()
+                                                            title_lower = title.lower()
+                                                            if any(keyword in title_lower for keyword in sports_keywords):
+                                                                if title not in trending_topics:
+                                                                    trending_topics.append(title)
+                                                                    logger.info(f"Found trending topic from JSON array: {title}")
+                                            
+                                            # Handle object with trends
+                                            elif isinstance(data, dict):
+                                                # Navigate through possible structures
+                                                trends_data = (data.get('trendingSearchesDays', []) or 
+                                                             data.get('trendingSearches', []) or 
+                                                             data.get('trends', []) or
+                                                             data.get('default', {}).get('trendingSearchesDays', []))
+                                                
+                                                if trends_data:
+                                                    logger.info(f"Found trends data structure in JSON")
+                                                    for day_data in trends_data[:1]:  # Just get today
+                                                        if isinstance(day_data, dict):
+                                                            searches = (day_data.get('trendingSearches', []) or 
+                                                                      day_data.get('searches', []) or
+                                                                      day_data.get('trends', []))
+                                                            for search in searches[:25]:
+                                                                if isinstance(search, dict):
+                                                                    title = (search.get('title', {}).get('query', '') if isinstance(search.get('title'), dict) 
+                                                                           else search.get('title', '') or 
+                                                                           search.get('query', '') or 
+                                                                           search.get('articleTitle', ''))
+                                                                else:
+                                                                    title = str(search)
+                                                                
+                                                                if title and title.strip():
+                                                                    title = title.strip()
+                                                                    title_lower = title.lower()
+                                                                    if any(keyword in title_lower for keyword in sports_keywords):
+                                                                        if title not in trending_topics:
+                                                                            trending_topics.append(title)
+                                                                            logger.info(f"Found trending topic from JSON: {title}")
+                                                                            
+                                            # If we found topics, we can return early
+                                            if trending_topics:
+                                                logger.info(f"Found {len(trending_topics)} topics from JSON, continuing to verify...")
+                                                
+                                    except (json.JSONDecodeError, KeyError, AttributeError, ValueError) as e:
+                                        logger.debug(f"Could not parse JSON pattern: {str(e)}")
+                                        continue
+                        
+                        # Method 2: Parse HTML to find trend elements (soup already created above)
+                        # Filter out common UI/control words
+                        ui_words = ['search', 'explore', 'trends', 'trending', 'volume', 'status', 'active', 'lasted', 
+                                   'sort', 'by', 'title', 'relevance', 'hours', 'past', 'category', 'all', 'categories',
+                                   'export', 'download', 'csv', 'copy', 'clipboard', 'rss', 'feed', 'sign', 'in',
+                                   'home', 'help', 'send', 'feedback', 'about', 'privacy', 'terms', 'google', 'apps',
+                                   'main', 'menu', 'clear', 'close', 'location', 'select', 'calendar', 'month', 'year']
+                        
+                        # Method 2a: Look for table rows (Google Trends uses tables for trends)
+                        tables = soup.find_all('table')
+                        for table in tables:
+                            rows = table.find_all('tr')
+                            # Skip header row (usually first row)
+                            for row in rows[1:31]:  # Skip first row, check next 30
+                                cells = row.find_all(['td', 'th'])
+                                # Usually the first column contains the trend title
+                                if len(cells) > 0:
+                                    first_cell = cells[0]
+                                    # Get text from first cell
+                                    text = first_cell.get_text(strip=True)
+                                    
+                                    # Clean up text - remove common UI elements
+                                    if text:
+                                        # Remove if it contains only UI words
+                                        text_words = text.lower().split()
+                                        if all(word in ui_words for word in text_words[:3]):  # If first 3 words are all UI words, skip
+                                            continue
+                                        
+                                        # Remove if it's too short or contains only numbers/symbols
+                                        if len(text) < 3 or len(text) > 100:
+                                            continue
+                                        
+                                        # Skip if it looks like a UI label
+                                        if text.lower() in ui_words or any(text.lower().startswith(ui_word + ' ') for ui_word in ui_words):
+                                            continue
+                                        
+                                        # Skip if it contains common table headers
+                                        if 'sort by' in text.lower() or 'trend status' in text.lower() or 'search volume' in text.lower():
+                                            continue
+                                        
+                                        # Check if it's sports-related
+                                        text_lower = text.lower()
+                                        if any(keyword in text_lower for keyword in sports_keywords):
+                                            if text not in trending_topics:
+                                                trending_topics.append(text)
+                                                logger.info(f"Found trending topic from table: {text}")
+                        
+                        # Method 2b: Look for links to trends/explore (these often contain trend names)
+                        trend_links = soup.find_all('a', href=lambda x: x and ('/trends/explore' in x or '/trending' in x))
+                        for link in trend_links[:50]:
+                            text = link.get_text(strip=True)
+                            href = link.get('href', '')
+                            
+                            # Extract query from URL if present
+                            if '/trends/explore' in href:
+                                query_match = re.search(r'q=([^&]+)', href)
+                                if query_match:
+                                    text = query_match.group(1).replace('+', ' ').replace('%20', ' ')
+                            
+                            if text and 3 < len(text) < 100:
+                                text_words = text.lower().split()
+                                # Skip if it's mostly UI words
+                                if not all(word in ui_words for word in text_words[:2]):
+                                    if text.lower() not in ui_words:
+                                        text_lower = text.lower()
+                                        if any(keyword in text_lower for keyword in sports_keywords):
+                                            if text not in trending_topics:
+                                                trending_topics.append(text)
+                                                logger.info(f"Found trending topic from link: {text}")
+                        
+                        # Method 2c: Look for data attributes
+                        elements_with_data = soup.find_all(attrs={'data-query': True})
+                        for elem in elements_with_data[:30]:
+                            text = elem.get('data-query', '').strip()
+                            if text and 3 < len(text) < 100:
+                                text_lower = text.lower()
+                                if any(keyword in text_lower for keyword in sports_keywords):
+                                    if text not in trending_topics:
+                                        trending_topics.append(text)
+                                        logger.info(f"Found trending topic from data-query: {text}")
+                        
+                        if trending_topics:
+                            logger.info(f"Found {len(trending_topics)} trending topics from Google Trends page")
+                            return trending_topics[:10]
+                            
+                except requests.RequestException as e:
+                    logger.debug(f"Request failed for {trends_url}: {str(e)}")
+                    continue
+                except Exception as e:
+                    logger.debug(f"Error parsing {trends_url}: {str(e)}")
+                    continue
+        except Exception as e:
+            logger.debug(f"Google Trends page scraping failed: {str(e)}")
+        
+        # Strategy 2: Try Google News RSS feeds for sports as fallback
+        try:
+            logger.info("Trying Google News RSS feeds as fallback...")
+            news_headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'application/rss+xml, application/xml, */*',
+            }
+            
+            google_news_urls = [
+                'https://news.google.com/rss/search?q=cricket+football+OR+sports&hl=en-IN&gl=IN&ceid=IN:en',
+                'https://news.google.com/rss/search?q=ipl+OR+premier+league+OR+sports&hl=en-IN&gl=IN&ceid=IN:en',
+                'https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRFZxYUdjU0FtVnVHZ0pWVXlnQVAB?hl=en-IN&gl=IN&ceid=IN:en',
+            ]
+            
+            for rss_url in google_news_urls:
+                try:
+                    response = requests.get(rss_url, headers=news_headers, timeout=10)
+                    if response.status_code == 200 and response.content:
+                        feed = feedparser.parse(response.content)
+                        if hasattr(feed, 'entries') and feed.entries:
+                            logger.info(f"Found {len(feed.entries)} entries in Google News RSS")
+                            
+                            for entry in feed.entries[:20]:
+                                title = entry.get('title', '').strip()
+                                if title and len(title) > 10 and len(title) < 150:
+                                    title_lower = title.lower()
+                                    if any(keyword in title_lower for keyword in sports_keywords):
+                                        words = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b', title)
+                                        for word_phrase in words:
+                                            if 4 < len(word_phrase) < 50:
+                                                word_lower = word_phrase.lower()
+                                                if any(keyword in word_lower for keyword in sports_keywords):
+                                                    if word_phrase not in trending_topics:
+                                                        trending_topics.append(word_phrase)
+                                                        logger.info(f"Found trending topic from Google News: {word_phrase}")
+                            
+                            if len(trending_topics) >= 5:
+                                logger.info(f"Found {len(trending_topics)} trending topics from Google News")
+                                return trending_topics[:10]
+                except Exception as e:
+                    logger.debug(f"Google News RSS failed: {str(e)}")
+                    continue
+        except Exception as e:
+            logger.debug(f"Google News scraping failed: {str(e)}")
+        
+        # Strategy 2: Try NewsAPI if available
+        try:
+            newsapi_key = getattr(settings, 'NEWSAPI_KEY', None)
+            if newsapi_key:
+                logger.info("Trying NewsAPI for trending topics...")
+                
+                # Get top headlines for sports
+                newsapi_url = 'https://newsapi.org/v2/top-headlines'
+                params = {
+                    'category': 'sports',
+                    'country': 'in',
+                    'pageSize': 20,
+                    'apiKey': newsapi_key
+                }
+                
+                response = requests.get(newsapi_url, params=params, timeout=10)
+                if response.status_code == 200:
+                    data = response.json()
+                    articles = data.get('articles', [])
+                    
+                    for article in articles[:15]:
+                        title = article.get('title', '').strip()
+                        if title:
+                            # Extract key terms
+                            title_lower = title.lower()
+                            if any(keyword in title_lower for keyword in sports_keywords):
+                                # Extract key phrases
+                                words = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b', title)
+                                for word_phrase in words:
+                                    if 4 < len(word_phrase) < 50:
+                                        word_lower = word_phrase.lower()
+                                        if any(keyword in word_lower for keyword in sports_keywords):
+                                            if word_phrase not in trending_topics:
+                                                trending_topics.append(word_phrase)
+                                                logger.info(f"Found trending topic from NewsAPI: {word_phrase}")
+                            
+                            if len(trending_topics) >= 5:
+                                logger.info(f"Found {len(trending_topics)} trending topics from NewsAPI")
+                                return trending_topics[:10]
+        except Exception as e:
+            logger.debug(f"NewsAPI failed: {str(e)}")
+        
+        # Strategy 3: Try ESPN or other sports news RSS feeds
+        try:
+            logger.info("Trying sports news RSS feeds...")
+            sports_rss_urls = [
+                'https://www.espn.com/espn/rss/news',
+                'https://feeds.bbci.co.uk/sport/rss.xml',
+            ]
+            
+            for rss_url in sports_rss_urls:
+                try:
+                    response = requests.get(rss_url, headers=headers, timeout=10)
+                    if response.status_code == 200:
+                        feed = feedparser.parse(response.content)
+                        if hasattr(feed, 'entries') and feed.entries:
+                            for entry in feed.entries[:15]:
+                                title = entry.get('title', '').strip()
+                                if title:
+                                    # Extract trending terms
+                                    words = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b', title)
+                                    for word_phrase in words:
+                                        if 4 < len(word_phrase) < 50:
+                                            word_lower = word_phrase.lower()
+                                            if any(keyword in word_lower for keyword in sports_keywords):
+                                                if word_phrase not in trending_topics:
+                                                    trending_topics.append(word_phrase)
+                                                    logger.info(f"Found trending topic from sports RSS: {word_phrase}")
+                            
+                            if len(trending_topics) >= 5:
+                                logger.info(f"Found {len(trending_topics)} trending topics from sports RSS")
+                                return trending_topics[:10]
+                except Exception as e:
+                    logger.debug(f"Sports RSS failed: {str(e)}")
+                    continue
+        except Exception as e:
+            logger.debug(f"Sports RSS scraping failed: {str(e)}")
+        
+        if trending_topics:
+            logger.info(f"Found {len(trending_topics)} trending topics from alternative sources")
+            return trending_topics[:10]
+        
+        logger.warning("All alternative sources failed - no trending topics found")
+        return []
+        
+    except Exception as e:
+        logger.error(f"Error getting trending topics from alternative sources: {str(e)}")
+        import traceback
+        logger.debug(traceback.format_exc())
+        return []
+
+
+def _get_fallback_trends():
+    """Return fallback trending topics when Google Trends is unavailable."""
+    return [
+        'Cricket News',
+        'Football Updates',
+        'Sports Highlights',
+        'IPL Updates',
+        'Premier League',
+    ]
+
+
+def _get_twitter_trends_sports_india():
+    """
+    Get Twitter-like trending topics for sports in India.
+    Uses Google Trends RSS for sports category (category=17) in India - this reflects
+    what people are actually searching for, which correlates with Twitter trends.
+    Since Twitter API is restricted, Google Trends RSS is the best proxy for actual trending topics.
+    """
+    logger.info("Fetching Twitter-like trends for sports in India")
+    
+    trending_topics = []
+    
+    # Strategy 1: Get Google Trends RSS for India (Sports category = 17)
+    # This is the BEST source for actual trending sports topics that people are searching/tweeting about
+    try:
+        logger.info("Fetching Google Trends RSS for Sports category in India (category=17)...")
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/rss+xml, application/xml, */*',
+            'Accept-Language': 'en-US,en;q=0.9',
+        }
+        
+        # Google Trends RSS for Sports category in India (category=17)
+        # This gives us the ACTUAL trending sports topics from Google Trends
+        rss_url = 'https://trends.google.com/trends/trendingsearches/daily/rss?geo=IN&category=17'
+        
+        response = requests.get(rss_url, headers=headers, timeout=15)
+        if response.status_code == 200 and response.content:
+            feed = feedparser.parse(response.content)
+            if hasattr(feed, 'entries') and feed.entries:
+                logger.info(f"Found {len(feed.entries)} sports trending entries from Google Trends RSS")
+                for entry in feed.entries[:15]:
+                    title = entry.get('title', '').strip()
+                    # Clean up title - remove common prefixes like "Google Trends - " or "Trending - "
+                    title = re.sub(r'^(Google Trends|Trending|Trends)\s*[-:]\s*', '', title, flags=re.IGNORECASE)
+                    title = title.strip()
+                    
+                    if title and len(title) > 3 and len(title) < 100:
+                        if title not in trending_topics:
+                            trending_topics.append(title)
+                            logger.info(f"Found sports trending topic from Google Trends RSS: {title}")
+                
+                if len(trending_topics) >= 5:
+                    logger.info(f"Found {len(trending_topics)} sports trending topics from Google Trends RSS")
+                    return trending_topics[:10]
+        else:
+            logger.warning(f"Google Trends RSS returned status {response.status_code}")
+    except Exception as e:
+        logger.debug(f"Google Trends RSS failed: {str(e)}")
+    
+    # Strategy 2: Try Google Trends RSS for all categories (as fallback, then filter for sports)
+    try:
+        logger.info("Trying Google Trends RSS for all categories (will filter sports)...")
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/rss+xml, application/xml, */*',
+            'Accept-Language': 'en-US,en;q=0.9',
+        }
+        
+        rss_url = 'https://trends.google.com/trends/trendingsearches/daily/rss?geo=IN'
+        sports_keywords = ['cricket', 'football', 'soccer', 'ipl', 'premier', 'league', 'match', 'sport', 'world cup', 'championship', 'tournament', 'team', 'player', 'goal', 'wicket', 'run', 'score', 'bcci', 'kohli', 'dhoni', 'messi', 'ronaldo']
+        
+        response = requests.get(rss_url, headers=headers, timeout=15)
+        if response.status_code == 200 and response.content:
+            feed = feedparser.parse(response.content)
+            if hasattr(feed, 'entries') and feed.entries:
+                logger.info(f"Found {len(feed.entries)} trending entries from Google Trends RSS")
+                for entry in feed.entries[:25]:
+                    title = entry.get('title', '').strip()
+                    title = re.sub(r'^(Google Trends|Trending|Trends)\s*[-:]\s*', '', title, flags=re.IGNORECASE)
+                    title = title.strip()
+                    
+                    if title and len(title) > 3 and len(title) < 100:
+                        title_lower = title.lower()
+                        # Filter for sports-related only
+                        if any(keyword in title_lower for keyword in sports_keywords):
+                            if title not in trending_topics:
+                                trending_topics.append(title)
+                                logger.info(f"Found sports trending topic: {title}")
+                
+                if len(trending_topics) >= 5:
+                    logger.info(f"Found {len(trending_topics)} sports trending topics from Google Trends RSS (filtered)")
+                    return trending_topics[:10]
+    except Exception as e:
+        logger.debug(f"Google Trends RSS (all categories) failed: {str(e)}")
+    
+    # Strategy 3: Try NewsAPI for top sports headlines in India (most recent/popular)
+    try:
+        newsapi_key = getattr(settings, 'NEWS_API_KEY', None)
+        if newsapi_key:
+            logger.info("Trying NewsAPI for top sports headlines in India...")
+            
+            newsapi_url = 'https://newsapi.org/v2/top-headlines'
+            params = {
+                'category': 'sports',
+                'country': 'in',
+                'pageSize': 15,
+                'apiKey': newsapi_key
+            }
+            
+            response = requests.get(newsapi_url, params=params, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                articles = data.get('articles', [])
+                
+                for article in articles[:15]:
+                    title = article.get('title', '').strip()
+                    if title:
+                        # Clean up title - remove source prefixes
+                        title = re.sub(r'^[^-]+-\s*', '', title)
+                        title = re.sub(r'\s*-\s*[^-]+$', '', title)
+                        title = title.strip()
+                        
+                        if title and len(title) > 5 and len(title) < 80:
+                            if title not in trending_topics:
+                                trending_topics.append(title)
+                                logger.info(f"Found trending topic from NewsAPI: {title}")
+                
+                if len(trending_topics) >= 5:
+                    logger.info(f"Found {len(trending_topics)} trending topics from NewsAPI")
+                    return trending_topics[:10]
+    except Exception as e:
+        logger.debug(f"NewsAPI failed: {str(e)}")
+    
+    if trending_topics:
+        logger.info(f"Found {len(trending_topics)} trending topics from alternative sources")
+        return trending_topics[:10]
+    
+    # Final fallback
+    logger.warning("No trending topics found from alternative sources, returning fallback topics")
+    return _get_twitter_fallback_trends()
+
+
+def _get_twitter_fallback_trends():
+    """Return fallback Twitter trending topics for sports in India."""
+    return [
+        'India Cricket',
+        'IPL Updates',
+        'Indian Football',
+        'Sports News India',
+        'Cricket Match',
+        'Football Match',
+        'BCCI News',
+        'Indian Sports',
+        'Premier League India',
+        'World Cup India',
+    ]
+
+
+def _fetch_articles_from_trending_topics(trending_topics):
+    """
+    Fetch articles from NewsAPI based on trending topics from Google Trends.
+    """
+    logger.info(f"Fetching articles from NewsAPI for trending topics: {trending_topics}")
+    
+    if not settings.NEWS_API_KEY:
+        return {'success': False, 'articles_created': 0, 'error': 'NewsAPI key not configured'}
+    
+    # Calculate timestamp for last 1 hour
+    one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
+    from_time = one_hour_ago.strftime('%Y-%m-%dT%H:%M:%SZ')
+    
+    api_url = 'https://newsapi.org/v2/everything'
+    articles_created = 0
+    errors = []
+    processed_urls = set()
+    
+    # Search for articles on each trending topic
+    for topic in trending_topics[:5]:  # Limit to top 5 topics
+        try:
+            params = {
+                'q': topic,
+                'language': 'en',
+                'sortBy': 'popularity',
+                'from': from_time,
+                'pageSize': 10,  # Get up to 10 articles per topic
+                'apiKey': settings.NEWS_API_KEY,
+            }
+            
+            logger.info(f"Searching NewsAPI for trending topic: {topic}")
+            response = requests.get(api_url, params=params, timeout=30)
+            
+            if response.status_code != 200:
+                logger.warning(f"NewsAPI request failed for {topic}: {response.status_code}")
+                continue
+            
+            data = response.json()
+            if data.get('status') != 'ok':
+                logger.warning(f"NewsAPI returned error for {topic}: {data.get('message')}")
+                continue
+            
+            articles = data.get('articles', [])
+            logger.info(f"Found {len(articles)} articles for topic: {topic}")
+            
+            for article_data in articles:
+                try:
+                    url = article_data.get('url')
+                    if not url or url in processed_urls:
+                        continue
+                    
+                    # Check if article already exists
+                    existing = Article.objects.filter(source_url=url).first()
+                    if existing:
+                        continue
+                    
+                    processed_urls.add(url)
+                    
+                    # Determine sport category
+                    title = article_data.get('title', 'Untitled').lower()
+                    if any(word in title for word in ['cricket', 'ipl', 'bcci', 'kohli', 'dhoni', 'ashes']):
+                        sport = 'Cricket'
+                    elif any(word in title for word in ['football', 'soccer', 'premier league', 'messi', 'ronaldo']):
+                        sport = 'Football'
+                    else:
+                        sport = 'Sports'
+                    
+                    # Build trend data with trending topic info
+                    trend_data = {
+                        'title': article_data.get('title', ''),
+                        'link': url,
+                        'published': article_data.get('publishedAt', ''),
+                        'sport': sport,
+                        'trending_topic': topic,
+                        'source': article_data.get('source', {}).get('name', 'NewsAPI'),
+                        'author': article_data.get('author', ''),
+                        'description': article_data.get('description', ''),
+                        'image_url': article_data.get('urlToImage', ''),
+                        'newsapi': True,
+                        'from_google_trends': True,
+                    }
+                    
+                    summary = article_data.get('description', '') or article_data.get('content', '')[:500]
+                    
+                    # Generate unique slug
+                    title = article_data.get('title', 'Untitled')
+                    slug = slugify(title)
+                    base_slug = slug
+                    counter = 1
+                    while Article.objects.filter(slug=slug).exists():
+                        slug = f"{base_slug}-{counter}"
+                        counter += 1
+                    
+                    article = Article.objects.create(
+                        title=title,
+                        slug=slug,
+                        summary=summary[:500],
+                        status='fetched',
+                        source_url=url,
+                        source_feed='NewsAPI (Google Trends)',
+                        category='trends',
+                        trend_data=trend_data,
+                    )
+                    
+                    articles_created += 1
+                    logger.debug(f"Created article from trending topic '{topic}': {title}")
+                    
+                except Exception as e:
+                    logger.error(f"Error processing article for topic {topic}: {str(e)}")
+                    continue
+            
+            # Add delay between topic searches
+            time.sleep(1)
+            
+        except Exception as e:
+            logger.error(f"Error fetching articles for topic {topic}: {str(e)}")
+            errors.append(str(e))
+            continue
+    
+    logger.info(f"NewsAPI fetch from trending topics completed. Created {articles_created} articles.")
+    
+    return {
+        'success': True,
+        'articles_created': articles_created,
+        'errors': errors,
+        'topics_searched': len(trending_topics)
+    }
+
+
+def _fetch_articles_from_google_news(trending_topics):
+    """
+    Fetch articles from Google News RSS based on trending topics.
+    Fallback when NewsAPI is not available.
+    """
+    logger.info(f"Fetching articles from Google News for trending topics: {trending_topics}")
+    
+    articles_created = 0
+    errors = []
+    processed_urls = set()
+    
+    for topic in trending_topics[:5]:  # Limit to top 5 topics
+        try:
+            # Google News RSS feed URL
+            # URL encode the topic
+            from urllib.parse import quote_plus
+            encoded_topic = quote_plus(topic)
+            google_news_url = f"https://news.google.com/rss/search?q={encoded_topic}+sports&hl=en&gl=IN&ceid=IN:en"
+            
+            logger.info(f"Fetching Google News RSS for topic: {topic}")
+            feed = feedparser.parse(google_news_url)
+            
+            if feed.bozo:
+                logger.warning(f"Feed parsing issues for {topic}: {feed.bozo_exception}")
+                continue
+            
+            one_hour_ago = timezone.now() - timedelta(hours=1)
+            
+            for entry in feed.entries[:10]:  # Limit to 10 articles per topic
+                try:
+                    url = entry.get('link', '')
+                    if not url or url in processed_urls:
+                        continue
+                    
+                    # Check if article already exists
+                    existing = Article.objects.filter(source_url=url).first()
+                    if existing:
+                        continue
+                    
+                    # Check if article is from last hour
+                    published_time = None
+                    if entry.get('published_parsed'):
+                        try:
+                            published_time = datetime(*entry.published_parsed[:6])
+                            published_time = timezone.make_aware(published_time)
+                            if published_time < one_hour_ago:
+                                continue
+                        except:
+                            pass
+                    
+                    processed_urls.add(url)
+                    
+                    # Determine sport
+                    title = entry.get('title', 'Untitled').lower()
+                    if any(word in title for word in ['cricket', 'ipl', 'bcci']):
+                        sport = 'Cricket'
+                    elif any(word in title for word in ['football', 'soccer', 'premier league']):
+                        sport = 'Football'
+                    else:
+                        sport = 'Sports'
+                    
+                    trend_data = {
+                        'title': entry.get('title', ''),
+                        'link': url,
+                        'published': entry.get('published', ''),
+                        'sport': sport,
+                        'trending_topic': topic,
+                        'source': 'Google News',
+                        'from_google_trends': True,
+                    }
+                    
+                    summary = entry.get('summary', '') or entry.get('description', '')
+                    
+                    slug = slugify(entry.get('title', 'Untitled'))
+                    base_slug = slug
+                    counter = 1
+                    while Article.objects.filter(slug=slug).exists():
+                        slug = f"{base_slug}-{counter}"
+                        counter += 1
+                    
+                    article = Article.objects.create(
+                        title=entry.get('title', 'Untitled'),
+                        slug=slug,
+                        summary=summary[:500],
+                        status='fetched',
+                        source_url=url,
+                        source_feed='Google News (Google Trends)',
+                        category='trends',
+                        trend_data=trend_data,
+                    )
+                    
+                    articles_created += 1
+                    logger.debug(f"Created article from Google News topic '{topic}': {article.title}")
+                    
+                except Exception as e:
+                    logger.error(f"Error processing Google News article: {str(e)}")
+                    continue
+            
+            time.sleep(1)  # Delay between topics
+            
+        except Exception as e:
+            logger.error(f"Error fetching Google News for topic {topic}: {str(e)}")
+            errors.append(str(e))
+            continue
+    
+    logger.info(f"Google News fetch from trending topics completed. Created {articles_created} articles.")
+    
+    return {
+        'success': True,
+        'articles_created': articles_created,
+        'errors': errors,
+        'topics_searched': len(trending_topics)
+    }
 
 
 def _fetch_newsapi_india_sports():
