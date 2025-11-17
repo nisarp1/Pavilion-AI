@@ -3,11 +3,12 @@ import api from '../../services/api'
 
 export const fetchArticles = createAsyncThunk(
   'articles/fetchArticles',
-  async ({ status, category, page = 1 }, { rejectWithValue }) => {
+  async ({ status, category, page = 1, page_size }, { rejectWithValue }) => {
     try {
       const params = { page }
       if (status) params.status = status
       if (category) params.category = category
+      if (page_size) params.page_size = page_size
       const response = await api.get('/articles/', { params })
       return response.data
     } catch (error) {
@@ -112,6 +113,21 @@ export const fetchAllFeeds = createAsyncThunk(
   }
 )
 
+export const bulkUpdateArticles = createAsyncThunk(
+  'articles/bulkUpdateArticles',
+  async ({ article_ids, updates }, { rejectWithValue }) => {
+    try {
+      const response = await api.post('/articles/bulk_update/', {
+        article_ids,
+        updates
+      })
+      return response.data
+    } catch (error) {
+      return rejectWithValue(error.response?.data || error.message)
+    }
+  }
+)
+
 const articleSlice = createSlice({
   name: 'articles',
   initialState: {
@@ -196,6 +212,18 @@ const articleSlice = createSlice({
         if (state.currentArticle?.id === action.payload.id) {
           state.currentArticle = action.payload
         }
+      })
+      .addCase(bulkUpdateArticles.pending, (state) => {
+        state.loading = true
+        state.error = null
+      })
+      .addCase(bulkUpdateArticles.fulfilled, (state, action) => {
+        state.loading = false
+        // Refresh the list to show updated articles
+      })
+      .addCase(bulkUpdateArticles.rejected, (state, action) => {
+        state.loading = false
+        state.error = action.payload
       })
   },
 })

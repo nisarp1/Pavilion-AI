@@ -9,10 +9,15 @@ export const fetchCategories = createAsyncThunk(
       const { parent_only, is_active } = params
       const queryParams = new URLSearchParams()
       if (parent_only) queryParams.append('parent_only', parent_only)
-      if (is_active !== undefined) queryParams.append('is_active', is_active)
+      if (is_active !== undefined) {
+        // Convert boolean to string if needed
+        queryParams.append('is_active', is_active === true || is_active === 'true' ? 'true' : 'false')
+      }
       
       const response = await api.get(`/categories/?${queryParams.toString()}`)
-      return response.data
+      // Handle paginated response or direct array
+      const data = response.data
+      return Array.isArray(data) ? data : (data.results || data)
     } catch (error) {
       return rejectWithValue(error.response?.data || error.message)
     }

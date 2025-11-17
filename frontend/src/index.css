@@ -53,6 +53,10 @@ code {
   font-family: inherit !important;
 }
 
+.ql-editor p {
+  padding: 10px 0;
+}
+
 .ql-container {
   font-size: 0.875rem !important;
 }

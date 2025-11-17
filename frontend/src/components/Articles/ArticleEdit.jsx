@@ -2,8 +2,10 @@ import { useEffect, useState, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { fetchArticle, updateArticle, publishArticle } from '../../store/slices/articleSlice'
+import api from '../../services/api'
 import { fetchCategoryTree } from '../../store/slices/categorySlice'
 import { FiImage, FiUser, FiLink, FiTag, FiExternalLink } from 'react-icons/fi'
+import MediaLibrary from '../MediaLibrary/MediaLibrary'
 import ReactQuill from 'react-quill'
 import 'react-quill/dist/quill.snow.css'
 import Quill from 'quill'
@@ -16,7 +18,10 @@ function ArticleEdit() {
   const { currentArticle, loading } = useSelector((state) => state.articles)
   const { categoryTree } = useSelector((state) => state.categories)
   const quillRef = useRef(null)
+  const fileInputRef = useRef(null)
   const [saving, setSaving] = useState(false)
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const [showMediaLibrary, setShowMediaLibrary] = useState(false)
   const [formData, setFormData] = useState({
     title: '',
     slug: '',
@@ -30,6 +35,7 @@ function ArticleEdit() {
     meta_description: '',
     og_title: '',
     og_description: '',
+    published_at: '',
   })
   useEffect(() => {
     dispatch(fetchArticle(id))
@@ -38,6 +44,19 @@ function ArticleEdit() {
 
   useEffect(() => {
     if (currentArticle) {
+      // Format published_at for datetime-local input (YYYY-MM-DDTHH:mm)
+      let publishedAt = ''
+      if (currentArticle.published_at) {
+        const date = new Date(currentArticle.published_at)
+        // Convert to local datetime string format
+        const year = date.getFullYear()
+        const month = String(date.getMonth() + 1).padStart(2, '0')
+        const day = String(date.getDate()).padStart(2, '0')
+        const hours = String(date.getHours()).padStart(2, '0')
+        const minutes = String(date.getMinutes()).padStart(2, '0')
+        publishedAt = `${year}-${month}-${day}T${hours}:${minutes}`
+      }
+      
       setFormData({
         title: currentArticle.title || '',
         slug: currentArticle.slug || '',
@@ -51,6 +70,7 @@ function ArticleEdit() {
         meta_description: currentArticle.meta_description || '',
         og_title: currentArticle.og_title || '',
         og_description: currentArticle.og_description || '',
+        published_at: publishedAt,
       })
     }
   }, [currentArticle])
@@ -122,6 +142,16 @@ function ArticleEdit() {
     setSaving(true)
     try {
       const dataToSave = { ...formData, status }
+      
+      // Convert published_at from datetime-local format to ISO string
+      if (dataToSave.published_at) {
+        const date = new Date(dataToSave.published_at)
+        dataToSave.published_at = date.toISOString()
+      } else if (status === 'published') {
+        // If publishing and no published_at set, use current time
+        dataToSave.published_at = new Date().toISOString()
+      }
+      
       await dispatch(updateArticle({ id, data: dataToSave })).unwrap()
       
       if (status === 'published') {
@@ -143,6 +173,70 @@ function ArticleEdit() {
 
   const handleSaveDraft = () => {
     handleSave('draft')
+  }
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file')
+      return
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image size must be less than 5MB')
+      return
+    }
+
+    setUploadingImage(true)
+    try {
+      const formDataToSend = new FormData()
+      formDataToSend.append('featured_image', file)
+
+      const response = await api.patch(`/articles/${id}/`, formDataToSend)
+
+      const updatedArticle = response.data
+      dispatch({ type: 'articles/updateArticle/fulfilled', payload: updatedArticle })
+      
+      // Refresh the article to get the new image URL
+      dispatch(fetchArticle(id))
+    } catch (error) {
+      console.error('Error uploading image:', error)
+      alert('Failed to upload image. Please try again.')
+    } finally {
+      setUploadingImage(false)
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+  }
+
+  const handleImageButtonClick = () => {
+    setShowMediaLibrary(true)
+  }
+
+  const handleMediaSelect = async (mediaItem) => {
+    try {
+      setUploadingImage(true)
+      // Update article with selected media ID
+      const updateData = {
+        featured_media_id: mediaItem.id
+      }
+
+      const updateResponse = await api.patch(`/articles/${id}/`, updateData)
+      const updatedArticle = updateResponse.data
+      dispatch({ type: 'articles/updateArticle/fulfilled', payload: updatedArticle })
+      dispatch(fetchArticle(id))
+    } catch (error) {
+      console.error('Error setting featured image:', error)
+      alert('Failed to set featured image. Please try again.')
+    } finally {
+      setUploadingImage(false)
+    }
   }
 
   if (loading || !currentArticle) {
@@ -183,7 +277,10 @@ function ArticleEdit() {
             disabled={saving}
             className="px-6 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
           >
-            {saving ? 'Publishing...' : 'Publish'}
+            {saving 
+              ? (formData.status === 'published' ? 'Updating...' : 'Publishing...') 
+              : (formData.status === 'published' ? 'Update' : 'Publish')
+            }
           </button>
         </div>
       </div>
@@ -362,6 +459,26 @@ function ArticleEdit() {
                 <span className="ml-2 text-sm text-gray-700">Published</span>
               </label>
             </div>
+            
+            {/* Published Date/Time */}
+            {formData.status === 'published' && (
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <label htmlFor="published_at" className="block text-sm font-medium text-gray-700 mb-2">
+                  Published Date & Time
+                </label>
+                <input
+                  type="datetime-local"
+                  id="published_at"
+                  name="published_at"
+                  value={formData.published_at || ''}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Change when this article was/will be published
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Featured Image */}
@@ -370,6 +487,18 @@ function ArticleEdit() {
               <FiImage size={16} />
               Featured Image
             </h3>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleImageUpload}
+              accept="image/*"
+              className="hidden"
+            />
+            <MediaLibrary
+              isOpen={showMediaLibrary}
+              onClose={() => setShowMediaLibrary(false)}
+              onSelect={handleMediaSelect}
+            />
             {currentArticle.featured_image_url ? (
               <div className="space-y-3">
                 <img
@@ -382,17 +511,21 @@ function ArticleEdit() {
                 />
                 <button
                   type="button"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+                  onClick={handleImageButtonClick}
+                  disabled={uploadingImage}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Change Image
+                  {uploadingImage ? 'Uploading...' : 'Change Image'}
                 </button>
               </div>
             ) : (
               <button
                 type="button"
-                className="w-full px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-600 hover:border-primary-500 hover:text-primary-600"
+                onClick={handleImageButtonClick}
+                disabled={uploadingImage}
+                className="w-full px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-600 hover:border-primary-500 hover:text-primary-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Set featured image
+                {uploadingImage ? 'Uploading...' : 'Set featured image'}
               </button>
             )}
           </div>

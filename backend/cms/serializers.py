@@ -3,8 +3,22 @@ Serializers for CMS API.
 """
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Article, Category
+from .models import Article, Category, Media, WebStory, WebStorySlide
 from workers.tasks import generate_article_task
+
+
+class MediaPrimaryKeyRelatedField(serializers.PrimaryKeyRelatedField):
+    """Primary key field that returns the ID when serializing."""
+
+    def to_representation(self, value):
+        if not value:
+            return None
+        if hasattr(value, 'pk'):
+            return value.pk
+        # PKOnlyObject from DRF stores the pk on attribute "pk" but not "id"
+        if hasattr(value, 'id'):
+            return value.id
+        return value
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -77,14 +91,15 @@ class ArticleSerializer(serializers.ModelSerializer):
         write_only=True,
         required=False
     )
+    featured_media_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     
     class Meta:
         model = Article
         fields = [
-            'id', 'title', 'slug', 'summary', 'summary_english', 'body', 'status', 'category',
+            'id', 'title', 'slug', 'summary', 'body', 'status', 'category',
             'categories', 'category_ids',
             'author', 'author_name', 'editor', 'editor_name',
-            'featured_image', 'featured_image_url',
+            'featured_image', 'featured_image_url', 'featured_media_id',
             'meta_title', 'meta_description',
             'og_title', 'og_description', 'og_image', 'og_image_url',
             'source_url', 'source_feed', 'trend_data',
@@ -95,6 +110,18 @@ class ArticleSerializer(serializers.ModelSerializer):
             'id', 'slug', 'created_at', 'updated_at',
             'generation_started_at', 'generation_completed_at',
         ]
+    
+    def update(self, instance, validated_data):
+        # Handle featured_media_id - set featured_image from Media model
+        featured_media_id = validated_data.pop('featured_media_id', None)
+        if featured_media_id is not None:
+            try:
+                media = Media.objects.get(id=featured_media_id)
+                instance.featured_image = media.file
+            except Media.DoesNotExist:
+                pass
+        
+        return super().update(instance, validated_data)
     
     def get_featured_image_url(self, obj):
         if obj.featured_image:
@@ -157,4 +184,140 @@ class ArticleGenerateSerializer(serializers.Serializer):
         # Trigger Celery task
         task = generate_article_task.delay(article_id)
         return {'task_id': task.id, 'article_id': article_id}
+
+
+class MediaSerializer(serializers.ModelSerializer):
+    """Media serializer for media library."""
+    url = serializers.SerializerMethodField()
+    uploaded_by_name = serializers.CharField(source='uploaded_by.username', read_only=True)
+    
+    class Meta:
+        model = Media
+        fields = [
+            'id', 'title', 'file', 'url', 'alt_text', 'description',
+            'uploaded_by', 'uploaded_by_name', 'file_size', 'mime_type',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'file_size', 'mime_type', 'created_at', 'updated_at']
+    
+    def get_url(self, obj):
+        if obj.file:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.file.url)
+            return obj.file.url
+        return None
+    
+    def create(self, validated_data):
+        validated_data['uploaded_by'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+class WebStorySlideSerializer(serializers.ModelSerializer):
+    """Serializer for individual web story slides."""
+
+    image_url = serializers.SerializerMethodField()
+    media_id = MediaPrimaryKeyRelatedField(
+        source='media',
+        queryset=Media.objects.all(),
+        allow_null=True,
+        required=False
+    )
+
+    class Meta:
+        model = WebStorySlide
+        fields = [
+            'id', 'order', 'caption',
+            'media_id', 'external_image_url',
+            'image_url'
+        ]
+        read_only_fields = ['id', 'image_url']
+
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        return obj.resolved_image_url(request=request)
+
+
+class WebStorySerializer(serializers.ModelSerializer):
+    """Detailed serializer for web stories with nested slides."""
+
+    cover_image_url = serializers.SerializerMethodField()
+    cover_media_id = MediaPrimaryKeyRelatedField(
+        source='cover_media',
+        queryset=Media.objects.all(),
+        allow_null=True,
+        required=False
+    )
+    slides = WebStorySlideSerializer(many=True, required=False)
+    author_name = serializers.CharField(source='author.username', read_only=True)
+    editor_name = serializers.CharField(source='editor.username', read_only=True)
+
+    class Meta:
+        model = WebStory
+        fields = [
+            'id', 'title', 'slug', 'summary', 'status',
+            'cover_image', 'cover_image_url', 'cover_media_id', 'cover_external_url',
+            'author', 'author_name', 'editor', 'editor_name',
+            'published_at', 'scheduled_for',
+            'created_at', 'updated_at',
+            'slides',
+        ]
+        read_only_fields = ['id', 'slug', 'created_at', 'updated_at', 'published_at']
+
+    def create(self, validated_data):
+        slides_data = validated_data.pop('slides', [])
+        story = super().create(validated_data)
+        self._save_slides(story, slides_data)
+        return story
+
+    def update(self, instance, validated_data):
+        slides_data = validated_data.pop('slides', None)
+        story = super().update(instance, validated_data)
+
+        if slides_data is not None:
+            instance.slides.all().delete()
+            self._save_slides(instance, slides_data)
+
+        return story
+
+    def _save_slides(self, story, slides_data):
+        request = self.context.get('request')
+        for index, slide_data in enumerate(slides_data):
+            media = slide_data.get('media')
+            WebStorySlide.objects.create(
+                story=story,
+                order=slide_data.get('order', index),
+                caption=slide_data.get('caption', ''),
+                media=media,
+                external_image_url=slide_data.get('external_image_url', '')
+            )
+
+        # Refresh story to include newly created slides in response
+        story.refresh_from_db()
+
+    def get_cover_image_url(self, obj):
+        request = self.context.get('request')
+        return obj.cover_url(request=request)
+
+
+class WebStoryListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for listing web stories."""
+
+    cover_image_url = serializers.SerializerMethodField()
+    slide_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = WebStory
+        fields = [
+            'id', 'title', 'status', 'summary',
+            'cover_image_url', 'published_at', 'updated_at',
+            'slide_count'
+        ]
+
+    def get_cover_image_url(self, obj):
+        request = self.context.get('request')
+        return obj.cover_url(request=request)
+
+    def get_slide_count(self, obj):
+        return obj.slides.count()
 

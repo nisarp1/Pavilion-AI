@@ -1,7 +1,17 @@
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom'
-import { useDispatch, useSelector } from 'react-redux'
+import { useDispatch } from 'react-redux'
 import { logout } from '../../store/slices/authSlice'
-import { FiHome, FiFileText, FiPlus, FiLogOut, FiMenu, FiX, FiRss, FiTag } from 'react-icons/fi'
+import {
+  FiFileText,
+  FiPlus,
+  FiLogOut,
+  FiMenu,
+  FiX,
+  FiRss,
+  FiTag,
+  FiBookOpen,
+  FiLayers,
+} from 'react-icons/fi'
 import { useState } from 'react'
 
 function Dashboard() {
@@ -16,8 +26,10 @@ function Dashboard() {
   }
 
   const navItems = [
-    { path: '/articles', label: 'Articles', icon: FiFileText },
+    { path: '/articles', label: 'Articles', icon: FiFileText, matchStart: true },
     { path: '/articles/create', label: 'Create Article', icon: FiPlus },
+    { path: '/webstories', label: 'Web Stories', icon: FiBookOpen, matchStart: true },
+    { path: '/webstories/create', label: 'Create Web Story', icon: FiLayers },
     { path: '/categories', label: 'Categories', icon: FiTag },
     { path: '/rss-feeds', label: 'RSS Feeds', icon: FiRss },
   ]
@@ -53,7 +65,9 @@ function Dashboard() {
             <nav className="flex-1 p-4 space-y-2">
               {navItems.map((item) => {
                 const Icon = item.icon
-                const isActive = location.pathname === item.path
+                const isActive = item.matchStart
+                  ? location.pathname === item.path || location.pathname.startsWith(`${item.path}/`)
+                  : location.pathname === item.path
                 return (
                   <Link
                     key={item.path}

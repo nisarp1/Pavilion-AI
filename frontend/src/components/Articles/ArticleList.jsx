@@ -1,40 +1,84 @@
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
-import { fetchArticles, fetchTrends, fetchAllFeeds, generateArticle, publishArticle, archiveArticle, updateArticle } from '../../store/slices/articleSlice'
+import { fetchArticles, fetchTrends, fetchAllFeeds, generateArticle, publishArticle, archiveArticle, updateArticle, clearError } from '../../store/slices/articleSlice'
+import { fetchCategories } from '../../store/slices/categorySlice'
 import { format } from 'date-fns'
-import { FiEdit, FiPlay, FiCheck, FiArchive, FiRefreshCw, FiMoreVertical, FiEye, FiTrash2, FiClock, FiExternalLink } from 'react-icons/fi'
+import { FiEdit, FiPlay, FiCheck, FiArchive, FiRefreshCw, FiMoreVertical, FiEye, FiTrash2, FiClock, FiExternalLink, FiFilter } from 'react-icons/fi'
 import GoogleTrendsWidget from './GoogleTrendsWidget'
+import BulkEditModal from './BulkEditModal'
 
 function ArticleList() {
   const dispatch = useDispatch()
-  const { items, loading, pagination } = useSelector((state) => state.articles)
+  const { items, loading, pagination, error } = useSelector((state) => state.articles)
+  const { categories = [] } = useSelector((state) => state.categories || {})
   const [activeTab, setActiveTab] = useState('all')
+  const [selectedCategory, setSelectedCategory] = useState('')
   const [generatingArticles, setGeneratingArticles] = useState(new Set())
   const [refreshing, setRefreshing] = useState(false)
   const [selectedArticles, setSelectedArticles] = useState(new Set())
   const [showQuickActions, setShowQuickActions] = useState(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
+  const [showBulkEditModal, setShowBulkEditModal] = useState(false)
+
+  // Fetch categories on component mount
+  useEffect(() => {
+    dispatch(fetchCategories({ is_active: true }))
+      .then((result) => {
+        if (fetchCategories.fulfilled.match(result)) {
+          console.log('Categories loaded:', result.payload)
+        } else {
+          console.error('Failed to load categories:', result.payload)
+        }
+      })
+  }, [dispatch])
 
   useEffect(() => {
-    if (activeTab === 'all') {
-      dispatch(fetchArticles({}))
+    setCurrentPage(1) // Reset to first page when tab changes
+  }, [activeTab, selectedCategory])
+
+  useEffect(() => {
+    // Build query params
+    const params = { page: currentPage, page_size: pageSize }
+    
+    // Priority: selectedCategory > activeTab category > status
+    if (selectedCategory) {
+      // If a category is selected, use it (overrides tab-based category)
+      params.category = selectedCategory
+    } else if (activeTab === 'all') {
+      // No additional filters for 'all'
     } else if (activeTab === 'reliable_sources' || activeTab === 'trends' || activeTab === 'subscriptions') {
-      dispatch(fetchArticles({ category: activeTab }))
+      params.category = activeTab
     } else {
-      dispatch(fetchArticles({ status: activeTab }))
+      // Status-based tabs
+      params.status = activeTab
     }
-  }, [dispatch, activeTab])
+    
+    console.log('Fetching articles with params:', params)
+    dispatch(fetchArticles(params))
+      .then((result) => {
+        if (fetchArticles.fulfilled.match(result)) {
+          console.log('Articles fetched successfully:', result.payload)
+        } else {
+          console.error('Failed to fetch articles:', result.payload)
+        }
+      })
+      .catch((error) => {
+        console.error('Error fetching articles:', error)
+      })
+  }, [dispatch, activeTab, selectedCategory, currentPage, pageSize])
 
   // Auto-refresh for Reliable Sources and Trends tabs every 5 minutes
   useEffect(() => {
     if (activeTab === 'reliable_sources' || activeTab === 'trends') {
       const intervalId = setInterval(() => {
-        dispatch(fetchArticles({ category: activeTab }))
+        dispatch(fetchArticles({ category: activeTab, page: currentPage, page_size: pageSize }))
       }, 5 * 60 * 1000) // 5 minutes
 
       return () => clearInterval(intervalId)
     }
-  }, [dispatch, activeTab])
+  }, [dispatch, activeTab, currentPage, pageSize])
 
   const handleRefresh = async (e) => {
     e?.preventDefault()
@@ -42,25 +86,32 @@ function ArticleList() {
     
     setRefreshing(true)
     try {
+      // Build params based on selected category or active tab
+      const params = { page: currentPage, page_size: pageSize }
+      
+      // Priority: selectedCategory > activeTab category > status
+      if (selectedCategory) {
+        params.category = selectedCategory
+      } else if (activeTab === 'all') {
+        // No additional filters
+      } else if (activeTab === 'reliable_sources' || activeTab === 'trends' || activeTab === 'subscriptions') {
+        params.category = activeTab
+      } else {
+        params.status = activeTab
+      }
+      
       // If on reliable_sources or trends tab, fetch new feeds first
-      if (activeTab === 'reliable_sources') {
+      if (activeTab === 'reliable_sources' && !selectedCategory) {
         await dispatch(fetchAllFeeds())
         // Wait a moment for feeds to process, then refresh articles
         await new Promise(resolve => setTimeout(resolve, 1000))
-        await dispatch(fetchArticles({ category: 'reliable_sources' }))
-      } else if (activeTab === 'trends') {
+      } else if (activeTab === 'trends' && !selectedCategory) {
         await dispatch(fetchTrends())
         // Wait a moment for trends to process, then refresh articles
         await new Promise(resolve => setTimeout(resolve, 1000))
-        await dispatch(fetchArticles({ category: 'trends' }))
-      } else if (activeTab === 'all') {
-        await dispatch(fetchArticles({}))
-      } else if (activeTab === 'subscriptions') {
-        await dispatch(fetchArticles({ category: 'subscriptions' }))
-      } else {
-        // For status tabs (draft, published, fetched, archived)
-        await dispatch(fetchArticles({ status: activeTab }))
       }
+      
+      await dispatch(fetchArticles(params))
     } catch (error) {
       console.error('Refresh error:', error)
       alert('Error refreshing articles: ' + (error.message || 'Unknown error'))
@@ -77,19 +128,15 @@ function ArticleList() {
         // Success - refresh the list to show updated article
         // Note: Article status changes from 'fetched' to 'draft' after generation
         // So if viewing 'fetched' tab, article will move to 'draft' tab
-        if (activeTab === 'all') {
-          dispatch(fetchArticles({}))
-        } else if (activeTab === 'reliable_sources' || activeTab === 'trends' || activeTab === 'subscriptions') {
-          dispatch(fetchArticles({ category: activeTab }))
-        } else {
-          dispatch(fetchArticles({ status: activeTab }))
-        }
-        alert('Article generated successfully! The article body has been created using Gemini AI.')
+        refreshList()
+        // Alert removed - article generation happens silently
       } else {
-        alert('Error generating article: ' + (result.payload?.error || result.payload?.message || 'Unknown error'))
+        // Still show error alerts for debugging
+        console.error('Error generating article:', result.payload)
       }
     } catch (error) {
-      alert('Error generating article: ' + error.message)
+      // Still show error alerts for debugging
+      console.error('Error generating article:', error)
     } finally {
       setGeneratingArticles(prev => {
         const next = new Set(prev)
@@ -115,14 +162,40 @@ function ArticleList() {
   }
 
   const refreshList = () => {
-    if (activeTab === 'all') {
-      dispatch(fetchArticles({}))
+    const params = { page: currentPage, page_size: pageSize }
+    
+    if (selectedCategory) {
+      params.category = selectedCategory
+    } else if (activeTab === 'all') {
+      // No additional filters
     } else if (activeTab === 'reliable_sources' || activeTab === 'trends' || activeTab === 'subscriptions') {
-      dispatch(fetchArticles({ category: activeTab }))
+      params.category = activeTab
     } else {
-      dispatch(fetchArticles({ status: activeTab }))
+      params.status = activeTab
     }
+    
+    dispatch(fetchArticles(params))
   }
+
+  const handleCategoryChange = (e) => {
+    setSelectedCategory(e.target.value)
+    setCurrentPage(1) // Reset to first page when category changes
+  }
+
+  const handlePageChange = (newPage) => {
+    setCurrentPage(newPage)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const handlePageSizeChange = (e) => {
+    const newPageSize = parseInt(e.target.value)
+    setPageSize(newPageSize)
+    setCurrentPage(1) // Reset to first page when page size changes
+  }
+
+  const totalPages = pagination?.count ? Math.ceil(pagination.count / pageSize) : 1
+  const startItem = (currentPage - 1) * pageSize + 1
+  const endItem = Math.min(currentPage * pageSize, pagination?.count || 0)
 
   const handleSelectAll = (e) => {
     if (e.target.checked) {
@@ -201,6 +274,23 @@ function ArticleList() {
 
   return (
     <div>
+      {/* Error Display */}
+      {error && (
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="text-red-800">
+              <strong>Error loading articles:</strong> {typeof error === 'string' ? error : error.message || JSON.stringify(error)}
+            </div>
+            <button
+              onClick={() => dispatch(clearError())}
+              className="text-red-600 hover:text-red-800"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+      
       {/* Header */}
       <div className="mb-6 flex justify-between items-center">
         <div>
@@ -226,6 +316,44 @@ function ArticleList() {
             Add New
           </Link>
         </div>
+      </div>
+
+      {/* Category Filter */}
+      <div className="mb-4 flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <FiFilter className="text-gray-500" size={18} />
+          <label htmlFor="category-filter" className="text-sm font-medium text-gray-700">
+            Filter by Category:
+          </label>
+        </div>
+        <select
+          id="category-filter"
+          value={selectedCategory}
+          onChange={handleCategoryChange}
+          className="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white min-w-[200px]"
+        >
+          <option value="">All Categories</option>
+          {Array.isArray(categories) && categories.length > 0 ? (
+            categories
+              .filter(cat => cat && cat.is_active !== false)
+              .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+              .map((category) => (
+                <option key={category.id} value={category.slug || category.name?.toLowerCase().replace(/\s+/g, '-')}>
+                  {category.name}
+                </option>
+              ))
+          ) : (
+            <option disabled>Loading categories...</option>
+          )}
+        </select>
+        {selectedCategory && (
+          <button
+            onClick={() => setSelectedCategory('')}
+            className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded border border-gray-300"
+          >
+            Clear Filter
+          </button>
+        )}
       </div>
 
       {/* Tabs */}
@@ -326,21 +454,61 @@ function ArticleList() {
             {selectedArticles.size} item{selectedArticles.size > 1 ? 's' : ''} selected
           </div>
           <div className="flex gap-2">
-            <button className="px-3 py-1.5 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50">
+            <button
+              onClick={() => setShowBulkEditModal(true)}
+              className="px-3 py-1.5 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50"
+            >
               Edit
             </button>
-            <button className="px-3 py-1.5 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50">
+            <button
+              onClick={async () => {
+                const ids = Array.from(selectedArticles)
+                await Promise.all(ids.map(id => dispatch(updateArticle({ id, data: { status: 'draft' } }))))
+                setSelectedArticles(new Set())
+                refreshList()
+              }}
+              className="px-3 py-1.5 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50"
+            >
               Move to Draft
             </button>
-            <button className="px-3 py-1.5 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50">
+            <button
+              onClick={async () => {
+                const ids = Array.from(selectedArticles)
+                await Promise.all(ids.map(id => dispatch(publishArticle(id))))
+                setSelectedArticles(new Set())
+                refreshList()
+              }}
+              className="px-3 py-1.5 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50"
+            >
               Publish
             </button>
-            <button className="px-3 py-1.5 text-sm bg-white border border-red-300 text-red-600 rounded hover:bg-red-50">
+            <button
+              onClick={async () => {
+                if (confirm(`Are you sure you want to move ${selectedArticles.size} article(s) to trash?`)) {
+                  const ids = Array.from(selectedArticles)
+                  await Promise.all(ids.map(id => dispatch(archiveArticle(id))))
+                  setSelectedArticles(new Set())
+                  refreshList()
+                }
+              }}
+              className="px-3 py-1.5 text-sm bg-white border border-red-300 text-red-600 rounded hover:bg-red-50"
+            >
               Move to Trash
             </button>
           </div>
         </div>
       )}
+
+      {/* Bulk Edit Modal */}
+      <BulkEditModal
+        isOpen={showBulkEditModal}
+        onClose={() => setShowBulkEditModal(false)}
+        selectedArticleIds={Array.from(selectedArticles)}
+        onSuccess={() => {
+          setSelectedArticles(new Set())
+          refreshList()
+        }}
+      />
 
       {/* Articles Table */}
       <div className="bg-white rounded-lg shadow overflow-hidden border border-gray-200">
@@ -414,22 +582,6 @@ function ArticleList() {
                             </Link>
                             {getStatusBadge(article.status)}
                           </div>
-                          {article.source_url && (
-                            <div className="text-xs text-gray-400 mt-1">
-                              <a
-                                href={article.source_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="hover:text-blue-600 flex items-center gap-1"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <FiExternalLink size={10} />
-                                {article.source_url.length > 60 
-                                  ? article.source_url.substring(0, 60) + '...' 
-                                  : article.source_url}
-                              </a>
-                            </div>
-                          )}
                           <div className="flex items-center gap-3 text-xs text-gray-500">
                             <Link
                               to={`/articles/${article.id}/edit`}
@@ -479,9 +631,20 @@ function ArticleList() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm text-gray-600">
-                        {getCategoryLabel(article.category)}
-                      </span>
+                      <div className="text-sm text-gray-600">
+                        {article.categories && article.categories.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {article.categories.map((cat, idx) => (
+                              <span key={cat.id} className="px-2 py-0.5 bg-gray-100 rounded text-xs">
+                                {cat.name}
+                                {idx < article.categories.length - 1 && ','}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {article.author_name || '—'}
@@ -627,8 +790,82 @@ function ArticleList() {
           </tbody>
         </table>
       </div>
+
+      {/* Pagination Controls */}
+      {pagination && pagination.count > 0 && (
+        <div className="mt-6 flex items-center justify-between bg-white rounded-lg shadow p-4 border border-gray-200">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-700">Show:</label>
+              <select
+                value={pageSize}
+                onChange={handlePageSizeChange}
+                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+              <span className="text-sm text-gray-600">per page</span>
+            </div>
+            <div className="text-sm text-gray-600">
+              Showing {startItem} to {endItem} of {pagination.count} articles
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white"
+            >
+              Previous
+            </button>
+            
+            <div className="flex items-center gap-1">
+              {/* Show page numbers */}
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum
+                if (totalPages <= 5) {
+                  pageNum = i + 1
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i
+                } else {
+                  pageNum = currentPage - 2 + i
+                }
+
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => handlePageChange(pageNum)}
+                    className={`px-3 py-1.5 text-sm rounded-lg ${
+                      currentPage === pageNum
+                        ? 'bg-primary-600 text-white'
+                        : 'border border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                )
+              })}
+            </div>
+
+            <button
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage >= totalPages}
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
 export default ArticleList
+

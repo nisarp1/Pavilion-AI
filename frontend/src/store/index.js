@@ -4,6 +4,7 @@ import articleReducer from './slices/articleSlice'
 import rssReducer from './slices/rssSlice'
 import categoryReducer from './slices/categorySlice'
 import trendsReducer from './slices/trendsSlice'
+import webstoriesReducer from './slices/webstorySlice'
 
 export const store = configureStore({
   reducer: {
@@ -12,6 +13,7 @@ export const store = configureStore({
     rss: rssReducer,
     categories: categoryReducer,
     trends: trendsReducer,
+    webstories: webstoriesReducer,
   },
 })
 
