@@ -167,6 +167,9 @@ def fetch_single_rss_feed(feed_url, category='reliable_sources', trend_data=None
                 slug = f"{base_slug}-{counter}"
                 counter += 1
             
+            # Ensure we never pass None into JSONField
+            trend_payload = trend_data if trend_data is not None else {}
+            
             article = Article.objects.create(
                 title=title,
                 slug=slug,
@@ -175,7 +178,7 @@ def fetch_single_rss_feed(feed_url, category='reliable_sources', trend_data=None
                 source_url=entry.get('link', ''),
                 source_feed=feed_url,
                 category=category,
-                trend_data=trend_data,
+                trend_data=trend_payload,
             )
             
             # Try to fetch image if URL found in RSS
