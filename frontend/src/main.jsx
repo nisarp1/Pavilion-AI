@@ -5,14 +5,13 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { store } from './store'
 import './index.css'
-// Initialize Quill modules before app renders
-// Temporarily disabled to debug blank page
+// Initialize Quill modules - done lazily in components to avoid blank screen issues
 // import './utils/initQuill'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <Provider store={store}>
-      <BrowserRouter>
+      <BrowserRouter basename="/admin">
         <App />
       </BrowserRouter>
     </Provider>

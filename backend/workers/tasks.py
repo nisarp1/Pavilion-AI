@@ -25,8 +25,18 @@ from io import BytesIO
 from django.core.files.base import ContentFile
 from PIL import Image
 import re
+import os
+import html
 
 logger = logging.getLogger(__name__)
+
+# Google Cloud Text-to-Speech
+try:
+    from google.cloud import texttospeech
+    TTS_AVAILABLE = True
+except ImportError:
+    TTS_AVAILABLE = False
+    logger.warning("google-cloud-texttospeech not available. Audio generation will be disabled.")
 
 # Configure Gemini AI
 GEMINI_API_KEY = getattr(settings, 'GEMINI_API_KEY', '')
@@ -464,6 +474,329 @@ Return the JSON response with all fields filled."""
         return None
 
 
+def generate_audio_for_article(article, voice_name='chirp'):
+    """
+    Generate audio for article body using Google Cloud Text-to-Speech.
+    Uses Malayalam (ml-IN) voices with an energetic news anchor style.
+    
+    Args:
+        article: Article instance with body content
+        voice_name: Voice name to use (default: 'karthika')
+                    Options: 'karthika', 'ml-IN-Wavenet-A', 'ml-IN-Wavenet-B', 
+                            'ml-IN-Standard-A', 'ml-IN-Standard-B', etc.
+    
+    Returns:
+        bool: True if audio was generated successfully, False otherwise
+    """
+    if not TTS_AVAILABLE:
+        logger.warning("Google Cloud Text-to-Speech not available. Skipping audio generation.")
+        return False
+    
+    # Check if Google Cloud service account credentials are configured
+    # Google Cloud TTS requires service account credentials (JSON key file)
+    if not os.environ.get('GOOGLE_APPLICATION_CREDENTIALS'):
+        logger.warning("Google Cloud TTS service account credentials not configured. Set GOOGLE_APPLICATION_CREDENTIALS environment variable to the path of your service account JSON key file.")
+        return False
+    
+    # Verify the credentials file exists
+    creds_path = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
+    if not os.path.exists(creds_path):
+        logger.warning(f"Google Cloud TTS credentials file not found at: {creds_path}. Please check the GOOGLE_APPLICATION_CREDENTIALS path in your .env file.")
+        return False
+    
+    if not article.body or not article.body.strip():
+        logger.warning(f"Article {article.id} has no body content. Skipping audio generation.")
+        return False
+    
+    try:
+        logger.info(f"Starting audio generation for article {article.id} with voice: {voice_name}")
+        
+        # Initialize the TTS client
+        # Google Cloud TTS requires service account credentials (GOOGLE_APPLICATION_CREDENTIALS)
+        # or can use default credentials if running on GCP
+        client = texttospeech.TextToSpeechClient()
+        
+        # Extract text from HTML body (remove HTML tags)
+        soup = BeautifulSoup(article.body, 'html.parser')
+        text_content = soup.get_text(separator=' ', strip=True)
+        
+        # Clean up the text
+        text_content = re.sub(r'\s+', ' ', text_content).strip()
+        
+        if not text_content or len(text_content) < 50:
+            logger.warning(f"Extracted text is too short for article {article.id}. Skipping audio generation.")
+            return False
+        
+        # For long articles, truncate to avoid API limits
+        # Google TTS has a 5000 byte limit for SSML input
+        # Malayalam text uses more bytes per character (UTF-8 encoding)
+        # SSML tags add overhead (~150-200 bytes)
+        # So we limit to ~4000 characters for safety
+        
+        max_chars = 4000
+        if len(text_content) > max_chars:
+            logger.info(f"Article body is too long ({len(text_content)} chars), truncating to {max_chars} chars")
+            # Find a good breaking point (end of sentence)
+            truncated = text_content[:max_chars]
+            last_period = truncated.rfind('.')
+            last_question = truncated.rfind('?')
+            last_exclamation = truncated.rfind('!')
+            last_sentence_end = max(last_period, last_question, last_exclamation)
+            
+            if last_sentence_end > max_chars * 0.8:  # If we can find a sentence end in last 20%
+                text_content = truncated[:last_sentence_end + 1]
+            else:
+                text_content = truncated + "..."
+        
+        # Double-check byte size (SSML will add ~200 bytes overhead)
+        text_bytes = len(text_content.encode('utf-8'))
+        ssml_overhead = 200  # Approximate SSML tag overhead
+        max_bytes = 4800  # Leave some buffer
+        
+        if text_bytes + ssml_overhead > max_bytes:
+            # Reduce more aggressively based on bytes
+            target_bytes = max_bytes - ssml_overhead - 100  # Extra buffer
+            # Truncate byte by byte to ensure we stay under limit
+            text_encoded = text_content.encode('utf-8')
+            if len(text_encoded) > target_bytes:
+                # Decode up to target_bytes, handling UTF-8 boundaries
+                truncated_bytes = text_encoded[:target_bytes]
+                # Find last valid UTF-8 character boundary
+                while truncated_bytes and truncated_bytes[-1] & 0xC0 == 0x80:
+                    truncated_bytes = truncated_bytes[:-1]
+                text_content = truncated_bytes.decode('utf-8', errors='ignore')
+                # Try to end at sentence boundary
+                last_period = text_content.rfind('.')
+                if last_period > len(text_content) * 0.8:
+                    text_content = text_content[:last_period + 1]
+                else:
+                    text_content = text_content + "..."
+                logger.info(f"Truncated to {len(text_content.encode('utf-8'))} bytes to fit SSML limit")
+        
+        # Set up the voice parameters for Malayalam (ml-IN)
+        # Map voice names to actual Google Cloud TTS voice names
+        # Quality ranking: Chirp3-HD > Neural2 > WaveNet > Standard
+        
+        # Three best voices for news reading (in order of quality):
+        # 1. Chirp3-HD-Despina - Highest quality, most natural (best for news)
+        # 2. Neural2-A - High quality, excellent prosody
+        # 3. Wavenet-A - Premium quality, widely available (current default)
+        
+        voice_mapping = {
+            # Top 3 voices for news reading (best quality first)
+            'chirp': 'ml-IN-Chirp3-HD-Despina',  # 🥇 Best quality - Most natural for news
+            'neural2': 'ml-IN-Neural2-A',  # 🥈 High quality - Excellent prosody
+            'wavenet': 'ml-IN-Wavenet-A',  # 🥉 Premium quality - Widely available
+            
+            # Legacy/alias names
+            'karthika': 'ml-IN-Wavenet-A',  # Alias for WaveNet (current default)
+            'best': 'ml-IN-Chirp3-HD-Despina',  # Alias for best quality voice
+            'premium': 'ml-IN-Neural2-A',  # Alias for premium quality
+            
+            # Gender-based mappings (default to WaveNet for compatibility)
+            'female': 'ml-IN-Wavenet-A',  # Female WaveNet voice
+            'male': 'ml-IN-Wavenet-B',  # Male WaveNet voice
+            
+            # Alternative voices
+            'female-alt': 'ml-IN-Wavenet-C',  # Alternative female WaveNet voice
+            'chirp-alt': 'ml-IN-Chirp3-HD-Erinome',  # Alternative Chirp voice
+            'neural2-alt': 'ml-IN-Neural2-C',  # Alternative Neural2 voice
+            
+            # Standard voices (lower cost options)
+            'standard-female': 'ml-IN-Standard-A',  # Standard female voice
+            'standard-male': 'ml-IN-Standard-B',  # Standard male voice
+        }
+        
+        # Use mapped voice name or use directly if it's already a valid voice name
+        actual_voice_name = voice_mapping.get(voice_name.lower(), voice_name)
+        
+        # Build smart fallback chain based on requested voice
+        # Each voice type has its own fallback strategy
+        if voice_name.lower() in ['chirp', 'best']:
+            # Chirp fallback: Try Chirp first, then Neural2, then WaveNet
+            voice_fallback_chain = [
+                actual_voice_name,  # ml-IN-Chirp3-HD-Despina
+                'ml-IN-Neural2-A',  # Fallback to Neural2
+                'ml-IN-Wavenet-A',  # Fallback to WaveNet
+                'ml-IN-Standard-A',  # Final fallback to Standard
+            ]
+        elif voice_name.lower() in ['neural2', 'premium']:
+            # Neural2 fallback: Try Neural2 first, then WaveNet
+            voice_fallback_chain = [
+                actual_voice_name,  # ml-IN-Neural2-A
+                'ml-IN-Wavenet-A',  # Fallback to WaveNet
+                'ml-IN-Standard-A',  # Final fallback to Standard
+            ]
+        elif voice_name.lower() in ['wavenet', 'karthika', 'female']:
+            # WaveNet fallback: Try WaveNet first, then Standard
+            voice_fallback_chain = [
+                actual_voice_name,  # ml-IN-Wavenet-A
+                'ml-IN-Wavenet-C',  # Try alternative WaveNet voice
+                'ml-IN-Standard-A',  # Final fallback to Standard
+            ]
+        else:
+            # Default fallback for unknown voices
+            voice_fallback_chain = [
+                actual_voice_name,
+                'ml-IN-Wavenet-A',
+                'ml-IN-Standard-A',
+            ]
+        
+        logger.info(f"Requested voice: {voice_name} -> Mapped to: {actual_voice_name}")
+        logger.info(f"Fallback chain for {voice_name}: {voice_fallback_chain}")
+        
+        # Configure audio output with voice-specific settings to make each voice distinct
+        # Each voice type gets slightly different settings to emphasize their unique characteristics
+        voice_name_lower = voice_name.lower()
+        
+        if voice_name_lower in ['chirp', 'best']:
+            # Chirp: Premium quality - smoother, more natural prosody
+            # Use slightly slower rate to showcase natural flow
+            speaking_rate = 1.05
+            pitch = 1.5
+            volume_gain_db = 1.5
+            prosody_rate = "1.05"
+            prosody_pitch = "+1.5st"
+            emphasis_level = "moderate"  # Moderate emphasis to preserve natural flow
+        elif voice_name_lower in ['neural2', 'premium']:
+            # Neural2: High quality - excellent prosody and clarity
+            # Balanced settings for clear, professional delivery
+            speaking_rate = 1.1
+            pitch = 2.0
+            volume_gain_db = 2.0
+            prosody_rate = "1.1"
+            prosody_pitch = "+2st"
+            emphasis_level = "strong"  # Strong emphasis for news anchor style
+        elif voice_name_lower in ['wavenet', 'karthika', 'female']:
+            # WaveNet: Premium quality - energetic and clear
+            # Slightly faster and higher pitch for energetic news anchor feel
+            speaking_rate = 1.15
+            pitch = 2.5
+            volume_gain_db = 2.5
+            prosody_rate = "1.15"
+            prosody_pitch = "+2.5st"
+            emphasis_level = "strong"  # Strong emphasis for energetic delivery
+        else:
+            # Default settings for unknown voices
+            speaking_rate = 1.1
+            pitch = 2.0
+            volume_gain_db = 2.0
+            prosody_rate = "1.1"
+            prosody_pitch = "+2st"
+            emphasis_level = "strong"
+        
+        audio_config = texttospeech.AudioConfig(
+            audio_encoding=texttospeech.AudioEncoding.MP3,
+            speaking_rate=speaking_rate,
+            pitch=pitch,
+            volume_gain_db=volume_gain_db,
+            effects_profile_id=['headphone-class-device'],  # Optimized for listening
+        )
+        
+        logger.info(f"Audio config for {voice_name}: rate={speaking_rate}, pitch={pitch}, volume={volume_gain_db}dB")
+        
+        # Escape XML/SSML special characters in text content
+        escaped_text = html.escape(text_content)
+        
+        # Add SSML for news anchor style with voice-specific emphasis
+        # This creates distinct, energetic, professional news anchor delivery for each voice
+        ssml_text = f"""<speak>
+            <prosody rate="{prosody_rate}" pitch="{prosody_pitch}" volume="loud">
+                <emphasis level="{emphasis_level}">{escaped_text}</emphasis>
+            </prosody>
+        </speak>"""
+        
+        logger.info(f"SSML config for {voice_name}: rate={prosody_rate}, pitch={prosody_pitch}, emphasis={emphasis_level}")
+        
+        # Synthesize speech with fallback logic
+        synthesis_input = texttospeech.SynthesisInput(ssml=ssml_text)
+        
+        # Try voices in fallback order until one works
+        last_error = None
+        response = None
+        used_fallback = False
+        
+        for idx, attempt_voice in enumerate(voice_fallback_chain):
+            try:
+                # Configure the voice
+                voice = texttospeech.VoiceSelectionParams(
+                    language_code='ml-IN',
+                    name=attempt_voice,
+                )
+                
+                logger.info(f"Attempting audio synthesis with voice {attempt_voice} for article {article.id} (attempt {idx + 1}/{len(voice_fallback_chain)})")
+                response = client.synthesize_speech(
+                    input=synthesis_input,
+                    voice=voice,
+                    audio_config=audio_config
+                )
+                
+                # Success! Update actual_voice_name and break out of loop
+                actual_voice_name = attempt_voice
+                if idx > 0:
+                    used_fallback = True
+                    logger.warning(f"⚠️ Used fallback voice: {attempt_voice} (original requested: {voice_fallback_chain[0]})")
+                    logger.warning(f"⚠️ This means {voice_fallback_chain[0]} is not available in your Google Cloud project")
+                else:
+                    logger.info(f"✅ Successfully used requested voice: {attempt_voice}")
+                break
+                
+            except Exception as voice_error:
+                last_error = voice_error
+                error_msg = str(voice_error)
+                
+                # Check if it's a voice not found error
+                if 'not found' in error_msg.lower() or 'invalid' in error_msg.lower() or '404' in error_msg:
+                    logger.warning(f"Voice {attempt_voice} not available: {error_msg}")
+                else:
+                    logger.warning(f"Voice {attempt_voice} failed: {error_msg}")
+                
+                # If this is not the last fallback, try next one
+                if idx < len(voice_fallback_chain) - 1:
+                    logger.info(f"Trying next fallback voice...")
+                    continue
+                else:
+                    # All voices failed, raise the last error
+                    logger.error(f"All voice fallbacks failed. Last error: {error_msg}")
+                    raise last_error
+        
+        if response is None:
+            raise Exception("All voice fallbacks failed")
+        
+        # Log warning if fallback was used
+        if used_fallback:
+            logger.warning(f"⚠️ NOTE: Requested voice '{voice_fallback_chain[0]}' was not available. Used '{actual_voice_name}' instead.")
+            logger.warning(f"⚠️ To use premium voices, ensure they are enabled in your Google Cloud project.")
+            logger.warning(f"⚠️ This is why all voices might sound the same - they're all falling back to '{actual_voice_name}'")
+        else:
+            logger.info(f"✅ Successfully used requested voice '{actual_voice_name}' for article {article.id}")
+        
+        # Save the audio file with actual voice name in filename for comparison
+        # Use actual_voice_name to reflect what was actually used (not just requested)
+        voice_short_name = actual_voice_name.split('-')[-1] if '-' in actual_voice_name else actual_voice_name
+        audio_filename = f'article_{article.id}_audio_{voice_name.lower()}_actual_{voice_short_name.lower()}.mp3'
+        
+        # Create audio file in memory
+        audio_content = response.audio_content
+        
+        # Save to article's audio field
+        # Note: This will overwrite previous audio, but filename includes voice name
+        article.audio.save(
+            audio_filename,
+            ContentFile(audio_content),
+            save=True
+        )
+        
+        logger.info(f"Audio generated successfully for article {article.id} with voice {voice_name}: {audio_filename}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error generating audio for article {article.id}: {str(e)}")
+        import traceback
+        logger.debug(traceback.format_exc())
+        return False
+
+
 def _generate_article_task_impl(article_id):
     """
     Internal implementation of article generation.
@@ -550,6 +883,9 @@ def _generate_article_task_impl(article_id):
         # Auto-assign categories based on content
         logger.info(f"Auto-assigning categories to article {article_id}")
         auto_assign_categories(article)
+        
+        # Note: Audio generation is skipped here - will be generated when article is published
+        # This saves costs by only generating audio for published articles
         
         # Mark as draft (ready for editing)
         article.status = 'draft'

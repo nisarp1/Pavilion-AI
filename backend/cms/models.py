@@ -170,6 +170,50 @@ def update_media_metadata(sender, instance, created, **kwargs):
             logger.warning(f"Error updating media metadata: {e}")
 
 
+# Signal handler will be defined after Article class
+def generate_audio_on_publish(sender, instance, created, **kwargs):
+    """
+    Generate audio for article when it's published.
+    Only generates audio if:
+    - Article status is 'published'
+    - Article has body content
+    - Audio doesn't already exist
+    """
+    # Only process if article is published
+    if instance.status != 'published':
+        return
+    
+    # Check if status changed to 'published' or if it's a new published article
+    status_changed_to_published = False
+    
+    if created:
+        # New article created with 'published' status
+        status_changed_to_published = True
+    elif hasattr(instance, '_status_changed') and instance._status_changed:
+        # Status changed - check if it changed TO published
+        if hasattr(instance, '_old_status'):
+            status_changed_to_published = (instance._old_status != 'published')
+    else:
+        # Fallback: check if audio doesn't exist (article was published without audio)
+        status_changed_to_published = not instance.audio
+    
+    # Generate audio if status changed to published and article has content
+    if status_changed_to_published and instance.body and instance.body.strip():
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            from workers.tasks import generate_audio_for_article
+            
+            logger.info(f"Article {instance.id} published - generating audio with Chirp voice")
+            # Generate audio synchronously (can be made async later if needed)
+            generate_audio_for_article(instance, voice_name='chirp')
+        except ImportError as e:
+            logger.warning(f"Could not import audio generation function: {e}")
+        except Exception as e:
+            logger.error(f"Error generating audio for published article {instance.id}: {e}", exc_info=True)
+
+
 class Article(models.Model):
     """Article model for CMS."""
     
@@ -225,6 +269,14 @@ class Article(models.Model):
         blank=True
     )
     
+    # Audio
+    audio = models.FileField(
+        upload_to='articles/audio/',
+        null=True,
+        blank=True,
+        help_text='Generated audio version of the article'
+    )
+    
     # SEO/OG Data
     meta_title = models.CharField(max_length=255, blank=True)
     meta_description = models.TextField(blank=True)
@@ -257,6 +309,18 @@ class Article(models.Model):
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = generate_unique_slug(self, self.title)
+        
+        # Track status change for audio generation
+        if self.pk:
+            try:
+                old_instance = Article.objects.get(pk=self.pk)
+                self._status_changed = (old_instance.status != self.status)
+                self._old_status = old_instance.status
+            except Article.DoesNotExist:
+                self._status_changed = False
+        else:
+            self._status_changed = False
+        
         super().save(*args, **kwargs)
     
     def publish(self):
@@ -265,6 +329,10 @@ class Article(models.Model):
         if not self.published_at:
             self.published_at = timezone.now()
         self.save()
+
+
+# Connect signal after Article class is defined
+post_save.connect(generate_audio_on_publish, sender=Article)
 
 
 class WebStory(models.Model):

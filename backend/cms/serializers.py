@@ -83,6 +83,7 @@ class ArticleSerializer(serializers.ModelSerializer):
     editor_name = serializers.CharField(source='editor.username', read_only=True)
     featured_image_url = serializers.SerializerMethodField()
     og_image_url = serializers.SerializerMethodField()
+    audio_url = serializers.SerializerMethodField()
     categories = CategoryListSerializer(many=True, read_only=True)
     category_ids = serializers.PrimaryKeyRelatedField(
         many=True,
@@ -100,6 +101,7 @@ class ArticleSerializer(serializers.ModelSerializer):
             'categories', 'category_ids',
             'author', 'author_name', 'editor', 'editor_name',
             'featured_image', 'featured_image_url', 'featured_media_id',
+            'audio', 'audio_url',
             'meta_title', 'meta_description',
             'og_title', 'og_description', 'og_image', 'og_image_url',
             'source_url', 'source_feed', 'trend_data',
@@ -137,6 +139,14 @@ class ArticleSerializer(serializers.ModelSerializer):
             if request:
                 return request.build_absolute_uri(obj.og_image.url)
             return obj.og_image.url
+        return None
+    
+    def get_audio_url(self, obj):
+        if obj.audio:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.audio.url)
+            return obj.audio.url
         return None
 
 

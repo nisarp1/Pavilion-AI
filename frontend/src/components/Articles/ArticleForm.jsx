@@ -30,55 +30,95 @@ function ArticleForm({ initialData, onSubmit, saving, submitLabel }) {
     }
   }, [initialData])
 
-  // Simple paste handler for embeds
+
+  // Paste handler for embeds - proven method from web research
   useEffect(() => {
-    if (!quillRef.current) return
+    let handlePaste = null
+    let timer = null
     
-    const quill = quillRef.current.getEditor()
-    if (!quill || !quill.root) return
-    
-    const handlePaste = (e) => {
-      const text = e.clipboardData?.getData('text/plain')
-      if (text && /youtube\.com|youtu\.be|twitter\.com|x\.com|instagram\.com|facebook\.com/i.test(text.trim())) {
-        e.preventDefault()
-        const url = text.trim()
-        const embedHtml = convertUrlToEmbed(url)
-        if (embedHtml) {
-          const range = quill.getSelection(true) || { index: quill.getLength(), length: 0 }
+    try {
+      // Wait for editor to be ready
+      timer = setTimeout(() => {
+        try {
+          if (!quillRef.current) return
           
-          // Insert newline and embed directly into DOM
-          const editorRoot = quill.root
-          const embedDiv = document.createElement('div')
-          embedDiv.className = 'ql-video-embed'
-          embedDiv.setAttribute('contenteditable', 'false')
-          embedDiv.innerHTML = embedHtml
+          const quill = quillRef.current.getEditor()
+          if (!quill || !quill.root) return
           
-          // Insert before the last child or append
-          const lastChild = editorRoot.lastElementChild
-          if (lastChild) {
-            lastChild.insertAdjacentElement('afterend', embedDiv)
-          } else {
-            editorRoot.appendChild(embedDiv)
+          handlePaste = async (e) => {
+            const clipboardData = e.clipboardData || window.clipboardData
+            if (!clipboardData) return
+            
+            const text = clipboardData.getData('text/plain')
+            if (!text) return
+            
+            const trimmedText = text.trim()
+            
+            // Check if it's a pure URL (exactly matches URL pattern)
+            const urlRegex = /^(https?:\/\/[^\s]+)$/i
+            if (!urlRegex.test(trimmedText)) return
+            
+            const url = trimmedText
+            
+            // Check if it's an embeddable URL
+            if (!/youtube\.com|youtu\.be|twitter\.com|x\.com|instagram\.com|facebook\.com/i.test(url)) {
+              return
+            }
+            
+            // Convert URL to embed HTML
+            const embedHtml = convertUrlToEmbed(url)
+            if (!embedHtml) return
+            
+            // Prevent default paste behavior
+            e.preventDefault()
+            e.stopPropagation()
+            
+            // Get current selection or end of document
+            const range = quill.getSelection(true)
+            const index = range ? range.index : quill.getLength()
+            
+            // Create embed wrapper HTML
+            const wrapperHtml = `<div class="ql-video-embed" contenteditable="false" style="margin: 1rem 0; text-align: center; max-width: 100%;">${embedHtml}</div><p><br></p>`
+            
+            // Insert embed HTML using Quill's clipboard API
+            quill.clipboard.dangerouslyPasteHTML(index, wrapperHtml, 'user')
+            
+            // Move cursor after embed
+            setTimeout(() => {
+              const newLength = quill.getLength()
+              quill.setSelection(newLength, 'silent')
+            }, 10)
           }
           
-          // Add spacing paragraph
-          const spacer = document.createElement('p')
-          spacer.innerHTML = '<br>'
-          embedDiv.insertAdjacentElement('afterend', spacer)
+          // Attach paste handler to editor root with capture phase
+          const editorElement = quill.root
+          editorElement.addEventListener('paste', handlePaste, true)
           
-          // Update Quill and move cursor
-          setTimeout(() => {
-            quill.update('user')
-            const newLength = quill.getLength()
-            quill.setSelection(newLength, 'silent')
-          }, 10)
+          console.log('✅ Embed paste handler registered (proven method)')
+        } catch (error) {
+          console.error('Error setting up paste handler:', error)
+        }
+      }, 200)
+    } catch (error) {
+      console.error('Error in paste handler useEffect:', error)
+    }
+    
+    return () => {
+      if (timer) {
+        clearTimeout(timer)
+      }
+      if (quillRef.current && handlePaste) {
+        try {
+          const quill = quillRef.current.getEditor()
+          if (quill && quill.root) {
+            quill.root.removeEventListener('paste', handlePaste, true)
+          }
+        } catch (error) {
+          // Ignore cleanup errors
         }
       }
     }
-    
-    quill.root.addEventListener('paste', handlePaste, true)
-    return () => quill.root.removeEventListener('paste', handlePaste, true)
-  }, [formData.body])
+  }, [])
 
   const handleChange = (e) => {
     const { name, value } = e.target

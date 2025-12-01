@@ -50,3 +50,6 @@ Thumbs.db
 celerybeat-schedule
 celerybeat.pid
 
+backend/credentials/
+backend/credentials/
+backend/**/*.json

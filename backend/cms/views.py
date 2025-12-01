@@ -159,6 +159,149 @@ class ArticleViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(article)
         return Response(serializer.data)
     
+    @action(detail=True, methods=['post'])
+    def generate_audio(self, request, pk=None):
+        """
+        Generate audio for an article with a specific voice.
+        Expected payload: {
+            "voice_name": "chirp" | "neural2" | "wavenet" | "karthika"
+        }
+        """
+        article = self.get_object()
+        
+        if not article.body or not article.body.strip():
+            return Response(
+                {'error': 'Article must have body content to generate audio.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        voice_name = request.data.get('voice_name', 'chirp')
+        
+        try:
+            from workers.tasks import generate_audio_for_article
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            logger.info(f"Generating audio for article {article.id} with voice: {voice_name}")
+            result = generate_audio_for_article(article, voice_name=voice_name)
+            
+            if result:
+                article.refresh_from_db()
+                serializer = self.get_serializer(article)
+                return Response({
+                    'message': f'Audio generated successfully with voice: {voice_name}',
+                    'article': serializer.data,
+                    'audio_url': serializer.data.get('audio_url')
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response(
+                    {'error': 'Audio generation failed. Check logs for details.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        except ImportError as import_error:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to import audio generation function: {str(import_error)}")
+            return Response({
+                'error': f'Failed to import audio generation module: {str(import_error)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error generating audio: {str(e)}", exc_info=True)
+            return Response({
+                'error': f'Audio generation error: {str(e)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=False, methods=['get'])
+    def check_available_voices(self, request):
+        """
+        Check which TTS voices are available in the Google Cloud project.
+        Useful for debugging why voices might sound the same (fallback issue).
+        """
+        try:
+            from google.cloud import texttospeech
+            import os
+            
+            # Check if credentials are configured
+            creds_path = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
+            if not creds_path or not os.path.exists(creds_path):
+                return Response({
+                    'error': 'Google Cloud credentials not configured',
+                    'available_voices': [],
+                    'recommended_voices': {
+                        'chirp': 'ml-IN-Chirp3-HD-Despina',
+                        'neural2': 'ml-IN-Neural2-A',
+                        'wavenet': 'ml-IN-Wavenet-A',
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            client = texttospeech.TextToSpeechClient()
+            voices = client.list_voices(language_code='ml-IN')
+            
+            available_voices = []
+            chirp_voices = []
+            neural2_voices = []
+            wavenet_voices = []
+            standard_voices = []
+            
+            for voice in voices.voices:
+                voice_info = {
+                    'name': voice.name,
+                    'gender': texttospeech.SsmlVoiceGender(voice.ssml_gender).name,
+                    'sample_rate': voice.natural_sample_rate_hertz,
+                }
+                available_voices.append(voice_info)
+                
+                if 'Chirp' in voice.name:
+                    chirp_voices.append(voice_info)
+                elif 'Neural2' in voice.name:
+                    neural2_voices.append(voice_info)
+                elif 'Wavenet' in voice.name:
+                    wavenet_voices.append(voice_info)
+                elif 'Standard' in voice.name:
+                    standard_voices.append(voice_info)
+            
+            # Check if recommended voices are available
+            recommended = {
+                'chirp': 'ml-IN-Chirp3-HD-Despina',
+                'neural2': 'ml-IN-Neural2-A',
+                'wavenet': 'ml-IN-Wavenet-A',
+            }
+            
+            voice_status = {}
+            for key, voice_name in recommended.items():
+                voice_status[key] = {
+                    'requested': voice_name,
+                    'available': any(v['name'] == voice_name for v in available_voices),
+                    'alternatives': [v['name'] for v in available_voices if key in v['name'].lower() or voice_name.split('-')[2] in v['name']]
+                }
+            
+            return Response({
+                'total_voices': len(available_voices),
+                'available_voices': available_voices,
+                'by_type': {
+                    'chirp': chirp_voices,
+                    'neural2': neural2_voices,
+                    'wavenet': wavenet_voices,
+                    'standard': standard_voices,
+                },
+                'recommended_voice_status': voice_status,
+                'diagnosis': {
+                    'chirp_available': len(chirp_voices) > 0,
+                    'neural2_available': len(neural2_voices) > 0,
+                    'wavenet_available': len(wavenet_voices) > 0,
+                    'all_same_voice_issue': len(wavenet_voices) > 0 and len(chirp_voices) == 0 and len(neural2_voices) == 0,
+                }
+            })
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error checking available voices: {str(e)}", exc_info=True)
+            return Response({
+                'error': f'Error checking voices: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
     @action(detail=False, methods=['post'])
     def bulk_update(self, request):
         """

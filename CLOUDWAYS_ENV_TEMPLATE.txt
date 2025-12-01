@@ -1,0 +1,59 @@
+# ============================================
+# Django Backend Environment Variables Template
+# ============================================
+# File: backend/.env
+# Location: /home/master/applications/[DJANGO_APP_ID]/public_html/backend/.env
+
+# Django Settings
+SECRET_KEY=your-super-secret-key-here-generate-with-openssl-rand-hex-32
+DEBUG=False
+ALLOWED_HOSTS=dev.pavilionend.in,www.dev.pavilionend.in
+
+# Database (Cloudways PostgreSQL)
+DB_ENGINE=postgresql
+DB_NAME=pavilion_gemini
+DB_USER=pavilion_user
+DB_PASSWORD=your_secure_database_password
+DB_HOST=localhost
+DB_PORT=5432
+
+# CORS Settings
+CORS_ALLOWED_ORIGINS=https://dev.pavilionend.in,https://www.dev.pavilionend.in
+
+# Redis (Cloudways Redis)
+REDIS_URL=redis://localhost:6379/0
+
+# Celery Settings
+RSS_FETCH_INTERVAL_MINUTES=5
+
+# Google Gemini AI
+GEMINI_API_KEY=your-gemini-api-key-here
+
+# Google Cloud Text-to-Speech
+# Full absolute path to your service account JSON key file
+GOOGLE_APPLICATION_CREDENTIALS=/home/master/applications/[DJANGO_APP_ID]/public_html/backend/credentials/google-tts-key.json
+
+# News API
+NEWS_API_KEY=your-news-api-key-here
+
+# AWS S3 (Optional - for media storage)
+# Leave empty if not using S3
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_STORAGE_BUCKET_NAME=
+AWS_S3_REGION_NAME=us-east-1
+
+# RSS Feeds (comma-separated URLs)
+RSS_FEEDS=https://example.com/feed1,https://example.com/feed2
+
+# Django Subdirectory (for deployment at /super-admin)
+DJANGO_SUBDIRECTORY=/super-admin
+
+# ============================================
+# React Frontend Environment Variables Template
+# ============================================
+# File: frontend/.env.production
+# Location: /home/master/applications/[FRONTEND_APP_ID]/public_html/.env.production
+
+VITE_API_BASE_URL=/super-admin/api/
+

@@ -4,7 +4,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { fetchArticle, updateArticle, publishArticle } from '../../store/slices/articleSlice'
 import api from '../../services/api'
 import { fetchCategoryTree } from '../../store/slices/categorySlice'
-import { FiImage, FiUser, FiLink, FiTag, FiExternalLink } from 'react-icons/fi'
+import { FiImage, FiUser, FiLink, FiTag, FiExternalLink, FiVolume2, FiDownload } from 'react-icons/fi'
 import MediaLibrary from '../MediaLibrary/MediaLibrary'
 import ReactQuill from 'react-quill'
 import 'react-quill/dist/quill.snow.css'
@@ -22,6 +22,8 @@ function ArticleEdit() {
   const [saving, setSaving] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
   const [showMediaLibrary, setShowMediaLibrary] = useState(false)
+  const [generatingAudio, setGeneratingAudio] = useState({})
+  const [voiceAudioUrls, setVoiceAudioUrls] = useState({})
   const [formData, setFormData] = useState({
     title: '',
     slug: '',
@@ -75,55 +77,95 @@ function ArticleEdit() {
     }
   }, [currentArticle])
 
-  // Simple paste handler for embeds
+
+  // Paste handler for embeds - proven method from web research
   useEffect(() => {
-    if (!quillRef.current) return
+    let handlePaste = null
+    let timer = null
     
-    const quill = quillRef.current.getEditor()
-    if (!quill || !quill.root) return
-    
-    const handlePaste = (e) => {
-      const text = e.clipboardData?.getData('text/plain')
-      if (text && /youtube\.com|youtu\.be|twitter\.com|x\.com|instagram\.com|facebook\.com/i.test(text.trim())) {
-        e.preventDefault()
-        const url = text.trim()
-        const embedHtml = convertUrlToEmbed(url)
-        if (embedHtml) {
-          const range = quill.getSelection(true) || { index: quill.getLength(), length: 0 }
+    try {
+      // Wait for editor to be ready
+      timer = setTimeout(() => {
+        try {
+          if (!quillRef.current) return
           
-          // Insert newline and embed directly into DOM
-          const editorRoot = quill.root
-          const embedDiv = document.createElement('div')
-          embedDiv.className = 'ql-video-embed'
-          embedDiv.setAttribute('contenteditable', 'false')
-          embedDiv.innerHTML = embedHtml
+          const quill = quillRef.current.getEditor()
+          if (!quill || !quill.root) return
           
-          // Insert before the last child or append
-          const lastChild = editorRoot.lastElementChild
-          if (lastChild) {
-            lastChild.insertAdjacentElement('afterend', embedDiv)
-          } else {
-            editorRoot.appendChild(embedDiv)
+          handlePaste = async (e) => {
+            const clipboardData = e.clipboardData || window.clipboardData
+            if (!clipboardData) return
+            
+            const text = clipboardData.getData('text/plain')
+            if (!text) return
+            
+            const trimmedText = text.trim()
+            
+            // Check if it's a pure URL (exactly matches URL pattern)
+            const urlRegex = /^(https?:\/\/[^\s]+)$/i
+            if (!urlRegex.test(trimmedText)) return
+            
+            const url = trimmedText
+            
+            // Check if it's an embeddable URL
+            if (!/youtube\.com|youtu\.be|twitter\.com|x\.com|instagram\.com|facebook\.com/i.test(url)) {
+              return
+            }
+            
+            // Convert URL to embed HTML
+            const embedHtml = convertUrlToEmbed(url)
+            if (!embedHtml) return
+            
+            // Prevent default paste behavior
+            e.preventDefault()
+            e.stopPropagation()
+            
+            // Get current selection or end of document
+            const range = quill.getSelection(true)
+            const index = range ? range.index : quill.getLength()
+            
+            // Create embed wrapper HTML
+            const wrapperHtml = `<div class="ql-video-embed" contenteditable="false" style="margin: 1rem 0; text-align: center; max-width: 100%;">${embedHtml}</div><p><br></p>`
+            
+            // Insert embed HTML using Quill's clipboard API
+            quill.clipboard.dangerouslyPasteHTML(index, wrapperHtml, 'user')
+            
+            // Move cursor after embed
+            setTimeout(() => {
+              const newLength = quill.getLength()
+              quill.setSelection(newLength, 'silent')
+            }, 10)
           }
           
-          // Add spacing paragraph
-          const spacer = document.createElement('p')
-          spacer.innerHTML = '<br>'
-          embedDiv.insertAdjacentElement('afterend', spacer)
+          // Attach paste handler to editor root with capture phase
+          const editorElement = quill.root
+          editorElement.addEventListener('paste', handlePaste, true)
           
-          // Update Quill and move cursor
-          setTimeout(() => {
-            quill.update('user')
-            const newLength = quill.getLength()
-            quill.setSelection(newLength, 'silent')
-          }, 10)
+          console.log('✅ Embed paste handler registered (proven method)')
+        } catch (error) {
+          console.error('Error setting up paste handler:', error)
+        }
+      }, 200)
+    } catch (error) {
+      console.error('Error in paste handler useEffect:', error)
+    }
+    
+    return () => {
+      if (timer) {
+        clearTimeout(timer)
+      }
+      if (quillRef.current && handlePaste) {
+        try {
+          const quill = quillRef.current.getEditor()
+          if (quill && quill.root) {
+            quill.root.removeEventListener('paste', handlePaste, true)
+          }
+        } catch (error) {
+          // Ignore cleanup errors
         }
       }
     }
-    
-    quill.root.addEventListener('paste', handlePaste, true)
-    return () => quill.root.removeEventListener('paste', handlePaste, true)
-  }, [formData.body])
+  }, [])
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -237,6 +279,44 @@ function ArticleEdit() {
     } finally {
       setUploadingImage(false)
     }
+  }
+
+  const handleGenerateAudio = async (voiceName) => {
+    if (!currentArticle.body || !currentArticle.body.trim()) {
+      alert('Article must have content to generate audio.')
+      return
+    }
+
+    setGeneratingAudio(prev => ({ ...prev, [voiceName]: true }))
+    try {
+      const response = await api.post(`/articles/${id}/generate_audio/`, {
+        voice_name: voiceName
+      })
+      
+      const audioUrl = response.data.audio_url || response.data.article?.audio_url
+      if (audioUrl) {
+        // Store the audio URL for this specific voice
+        setVoiceAudioUrls(prev => ({ ...prev, [voiceName]: audioUrl }))
+        // Refresh article to get updated audio (for WaveNet which is the default)
+        if (voiceName === 'wavenet' || voiceName === 'karthika') {
+          dispatch(fetchArticle(id))
+        }
+      }
+    } catch (error) {
+      console.error(`Error generating audio with ${voiceName}:`, error)
+      const errorMsg = error.response?.data?.error || error.message
+      alert(`Failed to generate audio with ${voiceName} voice: ${errorMsg}`)
+    } finally {
+      setGeneratingAudio(prev => ({ ...prev, [voiceName]: false }))
+    }
+  }
+
+  // Helper function to get full audio URL
+  const getFullAudioUrl = (audioUrl) => {
+    if (!audioUrl) return null
+    return audioUrl?.startsWith('http') 
+      ? audioUrl 
+      : `http://localhost:8000${audioUrl?.startsWith('/') ? '' : '/'}${audioUrl}`
   }
 
   if (loading || !currentArticle) {
@@ -480,6 +560,117 @@ function ArticleEdit() {
               </div>
             )}
           </div>
+
+          {/* Audio Comparison Section */}
+          {currentArticle.body && currentArticle.body.trim() && (
+            <div className="bg-white rounded-lg shadow p-6">
+              <h3 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide flex items-center gap-2">
+                <FiVolume2 size={16} />
+                Audio Comparison (Malayalam Voices)
+              </h3>
+              <p className="text-xs text-gray-500 mb-4">
+                Compare all three premium voices for news reading. Generate and play each voice to find the best one.
+              </p>
+              
+              <div className="space-y-4">
+                {/* Chirp Voice */}
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <h4 className="text-sm font-semibold text-gray-800">🥇 Chirp Voice</h4>
+                      <p className="text-xs text-gray-500">Best Quality - Most Natural</p>
+                    </div>
+                    <button
+                      onClick={() => handleGenerateAudio('chirp')}
+                      disabled={generatingAudio.chirp}
+                      className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {generatingAudio.chirp ? 'Generating...' : 'Generate'}
+                    </button>
+                  </div>
+                  {voiceAudioUrls.chirp && (
+                    <audio
+                      controls
+                      src={getFullAudioUrl(voiceAudioUrls.chirp)}
+                      className="w-full"
+                      style={{ height: '40px' }}
+                    >
+                      Your browser does not support the audio element.
+                    </audio>
+                  )}
+                  {!voiceAudioUrls.chirp && generatingAudio.chirp === false && (
+                    <p className="text-xs text-gray-400 italic">Click Generate to create audio with this voice</p>
+                  )}
+                </div>
+
+                {/* Neural2 Voice */}
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <h4 className="text-sm font-semibold text-gray-800">🥈 Neural2 Voice</h4>
+                      <p className="text-xs text-gray-500">High Quality - Excellent Prosody</p>
+                    </div>
+                    <button
+                      onClick={() => handleGenerateAudio('neural2')}
+                      disabled={generatingAudio.neural2}
+                      className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {generatingAudio.neural2 ? 'Generating...' : 'Generate'}
+                    </button>
+                  </div>
+                  {voiceAudioUrls.neural2 && (
+                    <audio
+                      controls
+                      src={getFullAudioUrl(voiceAudioUrls.neural2)}
+                      className="w-full"
+                      style={{ height: '40px' }}
+                    >
+                      Your browser does not support the audio element.
+                    </audio>
+                  )}
+                  {!voiceAudioUrls.neural2 && generatingAudio.neural2 === false && (
+                    <p className="text-xs text-gray-400 italic">Click Generate to create audio with this voice</p>
+                  )}
+                </div>
+
+                {/* WaveNet Voice */}
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <h4 className="text-sm font-semibold text-gray-800">🥉 WaveNet Voice</h4>
+                      <p className="text-xs text-gray-500">Premium Quality - Widely Available (Current Default)</p>
+                    </div>
+                    <button
+                      onClick={() => handleGenerateAudio('wavenet')}
+                      disabled={generatingAudio.wavenet}
+                      className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {generatingAudio.wavenet ? 'Generating...' : 'Generate'}
+                    </button>
+                  </div>
+                  {(voiceAudioUrls.wavenet || currentArticle.audio_url) && (
+                    <audio
+                      controls
+                      src={getFullAudioUrl(voiceAudioUrls.wavenet || currentArticle.audio_url || currentArticle.audio)}
+                      className="w-full"
+                      style={{ height: '40px' }}
+                    >
+                      Your browser does not support the audio element.
+                    </audio>
+                  )}
+                  {!voiceAudioUrls.wavenet && !currentArticle.audio_url && generatingAudio.wavenet === false && (
+                    <p className="text-xs text-gray-400 italic">Click Generate to create audio with this voice</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <p className="text-xs text-gray-500">
+                  💡 <strong>Tip:</strong> Generate all three voices and compare them side by side. The current default audio uses WaveNet voice.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Featured Image */}
           <div className="bg-white rounded-lg shadow p-6">

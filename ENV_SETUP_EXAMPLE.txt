@@ -1,0 +1,17 @@
+# .env file example - Add this line for Google Cloud Text-to-Speech
+
+# Google Cloud Text-to-Speech Service Account
+# Add the full absolute path to your downloaded service account JSON key file
+GOOGLE_APPLICATION_CREDENTIALS=/Users/yourusername/Downloads/pavilion-tts-key.json
+
+# Example paths (replace with your actual path):
+# macOS: /Users/nisar/Downloads/pavilion-tts-key.json
+# Linux: /home/username/Downloads/pavilion-tts-key.json
+# Windows (if using WSL): /mnt/c/Users/username/Downloads/pavilion-tts-key.json
+
+# IMPORTANT: 
+# - Use the FULL absolute path (starting with /)
+# - The file must exist at that location
+# - Do not commit the JSON key file to Git
+# - Keep the JSON file in a secure location
+

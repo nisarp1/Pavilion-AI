@@ -77,7 +77,10 @@ WSGI_APPLICATION = 'pavilion_gemini.wsgi.application'
 
 # Database
 # Use SQLite for development if PostgreSQL is not available
+# Database
+# Use SQLite for development if PostgreSQL/MySQL is not available
 DB_ENGINE = env('DB_ENGINE', default='postgresql')
+
 if DB_ENGINE == 'postgresql':
     DATABASES = {
         'default': {
@@ -87,6 +90,21 @@ if DB_ENGINE == 'postgresql':
             'PASSWORD': env('DB_PASSWORD', default='pavilion_password'),
             'HOST': env('DB_HOST', default='localhost'),
             'PORT': env('DB_PORT', default='5432'),
+        }
+    }
+elif DB_ENGINE == 'mysql':
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.mysql',
+            'NAME': env('DB_NAME', default='pavilion_gemini'),
+            'USER': env('DB_USER', default='pavilion_user'),
+            'PASSWORD': env('DB_PASSWORD', default='pavilion_password'),
+            'HOST': env('DB_HOST', default='localhost'),
+            'PORT': env('DB_PORT', default='3306'),
+            'OPTIONS': {
+                'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+                'charset': 'utf8mb4',
+            },
         }
     }
 else:
@@ -119,12 +137,18 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 
-# Static files (CSS, JavaScript, Images)
-STATIC_URL = 'static/'
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+# Subdirectory deployment
+FORCE_SCRIPT_NAME = env('FORCE_SCRIPT_NAME', default=None)
 
-# Media files
-MEDIA_URL = '/media/'
+# Static files (CSS, JavaScript, Images)
+if FORCE_SCRIPT_NAME:
+    STATIC_URL = f"{FORCE_SCRIPT_NAME}/static/"
+    MEDIA_URL = f"{FORCE_SCRIPT_NAME}/media/"
+else:
+    STATIC_URL = 'static/'
+    MEDIA_URL = '/media/'
+
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # Default primary key field type
@@ -206,6 +230,14 @@ RSS_FEEDS = env.list('RSS_FEEDS', default=[])
 # Google Gemini AI
 GEMINI_API_KEY = env('GEMINI_API_KEY', default='')
 GEMINI_MODEL = env('GEMINI_MODEL', default='gemini-2.5-flash')
+
+# Google Cloud Text-to-Speech
+# Set this to the full path of your service account JSON key file
+# Example: GOOGLE_APPLICATION_CREDENTIALS=/Users/username/Downloads/pavilion-tts-key.json
+GOOGLE_APPLICATION_CREDENTIALS = env('GOOGLE_APPLICATION_CREDENTIALS', default='')
+if GOOGLE_APPLICATION_CREDENTIALS:
+    import os
+    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = GOOGLE_APPLICATION_CREDENTIALS
 
 # News API
 NEWS_API_KEY = env('NEWS_API_KEY', default='')

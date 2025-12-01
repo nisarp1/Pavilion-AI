@@ -1,15 +1,38 @@
 /**
  * Initialize Quill modules - called once when app loads
+ * This is a safe wrapper that won't crash the app if Quill isn't available
  */
-import Quill from 'quill'
-import AutoEmbedModule from './quillAutoEmbed'
+let moduleRegistered = false
 
-// Register auto-embed module
-try {
-  Quill.register('modules/autoEmbed', AutoEmbedModule)
-  console.log('✅ AutoEmbed module registered')
-} catch (error) {
-  console.error('❌ Error registering AutoEmbed module:', error)
-  // Don't throw - let the app continue even if module registration fails
+export function registerAutoEmbedModule() {
+  if (moduleRegistered) {
+    return true
+  }
+  
+  try {
+    // Use dynamic import to avoid blocking app startup
+    import('quill').then((QuillModule) => {
+      const Quill = QuillModule.default || QuillModule
+      import('./quillAutoEmbed').then((AutoEmbedModule) => {
+        const Module = AutoEmbedModule.default || AutoEmbedModule
+        if (Quill && Module) {
+          Quill.register('modules/autoEmbed', Module)
+          moduleRegistered = true
+          console.log('✅ AutoEmbed module registered')
+        }
+      }).catch(() => {
+        // Silently fail
+      })
+    }).catch(() => {
+      // Silently fail - registration will happen when ReactQuill components mount
+    })
+    return false
+  } catch (error) {
+    console.warn('⚠️ AutoEmbed module registration deferred')
+    return false
+  }
 }
+
+// Try to register immediately, but don't block app startup
+registerAutoEmbedModule()
 
