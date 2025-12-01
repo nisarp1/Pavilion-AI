@@ -31,10 +31,10 @@ python-slugify==8.0.1
 Pillow==10.1.0
 
 # Google Gemini AI
-google-generativeai==0.3.2
+google-generativeai
 
 # Google Cloud Text-to-Speech
-google-cloud-texttospeech==2.16.3
+google-cloud-texttospeech
 
 # Google Trends
 pytrends==4.9.2
