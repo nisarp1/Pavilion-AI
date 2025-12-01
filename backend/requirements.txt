@@ -42,4 +42,4 @@ pytrends==4.9.2
 # Development
 django-extensions==3.2.3
 
-mysqlclient>=2.2.0
+pymysql>=1.1.0
