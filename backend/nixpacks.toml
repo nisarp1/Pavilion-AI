@@ -19,4 +19,4 @@ cmds = [
 ]
 
 [start]
-cmd = "gunicorn pavilion_gemini.wsgi --bind 0.0.0.0:8000"
+cmd = "gunicorn pavilion_gemini.wsgi --bind 0.0.0.0:$PORT"
