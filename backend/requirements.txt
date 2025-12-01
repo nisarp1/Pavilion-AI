@@ -28,7 +28,7 @@ django-storages==1.14.2
 
 # Utilities
 python-slugify==8.0.1
-Pillow==10.1.0
+Pillow
 
 # Google Gemini AI
 google-generativeai

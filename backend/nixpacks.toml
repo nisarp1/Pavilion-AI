@@ -1,0 +1,22 @@
+[phases.setup]
+nixPkgs = [
+    "python311",
+    "postgresql",
+    "gcc",
+    "musl-dev",
+    "libffi-dev",
+    "openssl-dev",
+    "zlib-dev",
+    "jpeg-dev",
+    "portaudio-dev"
+]
+
+[phases.build]
+cmds = [
+    "pip install -r requirements.txt",
+    "python manage.py collectstatic --noinput",
+    "python manage.py migrate"
+]
+
+[start]
+cmd = "gunicorn pavilion_gemini.wsgi"
