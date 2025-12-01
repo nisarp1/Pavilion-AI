@@ -45,3 +45,4 @@ django-extensions==3.2.3
 dj-database-url>=2.1.0
 whitenoise>=6.6.0
 gunicorn>=21.2.0
+setuptools
