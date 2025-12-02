@@ -15,11 +15,16 @@ class Command(BaseCommand):
             self.stdout.write('DJANGO_SUPERUSER_USERNAME or DJANGO_SUPERUSER_PASSWORD not set. Skipping admin creation.')
             return
 
-        if not User.objects.filter(username=username).exists():
-            User.objects.create_superuser(username=username, email=email, password=password)
-            self.stdout.write(self.style.SUCCESS(f'Superuser "{username}" created successfully.'))
-        else:
-            user = User.objects.get(username=username)
-            user.set_password(password)
-            user.save()
-            self.stdout.write(self.style.SUCCESS(f'Superuser "{username}" password updated successfully.'))
+        try:
+            if not User.objects.filter(username=username).exists():
+                self.stdout.write(f'Creating superuser "{username}"...')
+                User.objects.create_superuser(username=username, email=email, password=password)
+                self.stdout.write(self.style.SUCCESS(f'Superuser "{username}" created successfully.'))
+            else:
+                self.stdout.write(f'Updating password for "{username}"...')
+                user = User.objects.get(username=username)
+                user.set_password(password)
+                user.save()
+                self.stdout.write(self.style.SUCCESS(f'Superuser "{username}" password updated successfully.'))
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f'Error initializing admin: {str(e)}'))
