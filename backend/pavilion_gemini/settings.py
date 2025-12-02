@@ -135,6 +135,7 @@ CSRF_TRUSTED_ORIGINS = [
     'https://' + host for host in ALLOWED_HOSTS if host not in ['*', 'localhost', '127.0.0.1']
 ]
 # Fallback for wildcard
+if '*' in ALLOWED_HOSTS:
     CSRF_TRUSTED_ORIGINS += ['https://*.railway.app', 'https://*.vercel.app', 'https://pavilion-ai-production.up.railway.app']
 
 # Trust the X-Forwarded-Proto header for SSL (Required for Railway)
