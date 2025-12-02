@@ -211,3 +211,38 @@ class RSSFeedViewSet(viewsets.ModelViewSet):
                 'timestamp': timezone.now().isoformat()
             }, status=status.HTTP_200_OK)  # Still return 200 with fallback data
 
+from django.http import JsonResponse
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+import google.generativeai as genai
+from django.conf import settings
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def test_gemini_view(request):
+    """
+    Public view to test Gemini API connection.
+    """
+    api_key = getattr(settings, 'GEMINI_API_KEY', '')
+    model_name = getattr(settings, 'GEMINI_MODEL', 'gemini-1.5-flash')
+    
+    if not api_key:
+        return JsonResponse({'status': 'error', 'message': 'GEMINI_API_KEY is not set'}, status=500)
+
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(model_name)
+        response = model.generate_content("Say 'Hello from Railway!'")
+        return JsonResponse({
+            'status': 'success', 
+            'model': model_name,
+            'response': response.text,
+            'key_prefix': api_key[:5] + '...'
+        })
+    except Exception as e:
+        return JsonResponse({
+            'status': 'error', 
+            'model': model_name,
+            'error': str(e),
+            'key_prefix': api_key[:5] + '...'
+        }, status=500)

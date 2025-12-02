@@ -43,9 +43,11 @@ def reset_admin_password(request):
         User.objects.create_superuser('admin', 'admin@example.com', 'password123')
         return HttpResponse("Created admin with 'password123'")
 
+from rss_fetcher.views import test_gemini_view
+
 urlpatterns = [
     path('', api_root, name='api_root'),
-    path('reset-admin-force/', reset_admin_password),
+    path('test-gemini/', test_gemini_view),
     path('admin/', admin.site.urls),
     path('api/auth/login/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
