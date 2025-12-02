@@ -1,0 +1,1 @@
+web: echo "I AM USING THE PROCFILE" && gunicorn pavilion_gemini.wsgi --bind 0.0.0.0:$PORT

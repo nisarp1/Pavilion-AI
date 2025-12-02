@@ -11,6 +11,9 @@ nixPkgs = [
     "portaudio-dev"
 ]
 
+[variables]
+NIXPACKS_PYTHON_VERSION = '3.11'
+
 [phases.build]
 cmds = [
     "pip install -r requirements.txt",
@@ -19,4 +22,4 @@ cmds = [
 ]
 
 [start]
-cmd = "gunicorn pavilion_gemini.wsgi --bind 0.0.0.0:$PORT"
+cmd = "python manage.py migrate && python manage.py init_admin && gunicorn pavilion_gemini.wsgi --bind 0.0.0.0:$PORT"
