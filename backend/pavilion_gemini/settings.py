@@ -127,7 +127,16 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # Whitenoise storage for serving static files in production
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+# Whitenoise storage (Use non-manifest version to avoid 500 errors if files are missing)
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
+
+# CSRF Settings (Required for Railway/Vercel)
+CSRF_TRUSTED_ORIGINS = [
+    'https://' + host for host in ALLOWED_HOSTS if host not in ['*', 'localhost', '127.0.0.1']
+]
+# Fallback for wildcard
+if '*' in ALLOWED_HOSTS:
+    CSRF_TRUSTED_ORIGINS += ['https://*.railway.app', 'https://*.vercel.app']
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
