@@ -128,7 +128,10 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # Whitenoise storage for serving static files in production
 # Whitenoise storage (Use non-manifest version to avoid 500 errors if files are missing)
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
+# STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
+STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
+WHITENOISE_USE_FINDERS = True
+WHITENOISE_AUTOREFRESH = True
 
 # CSRF Settings (Required for Railway/Vercel)
 CSRF_TRUSTED_ORIGINS = [
