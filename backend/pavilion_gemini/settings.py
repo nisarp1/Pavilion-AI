@@ -153,15 +153,22 @@ SIMPLE_JWT = {
 }
 
 # CORS Settings
-CORS_ALLOWED_ORIGINS = env.list(
-    'CORS_ALLOWED_ORIGINS',
-    default=[
+# CORS Settings
+# Ensure we handle comma-separated list correctly and filter invalid origins
+raw_cors_origins = env.list('CORS_ALLOWED_ORIGINS', default=[])
+CORS_ALLOWED_ORIGINS = [
+    origin.strip() for origin in raw_cors_origins 
+    if origin.strip() and (origin.startswith('http://') or origin.startswith('https://'))
+]
+
+# Add defaults if empty (for local dev)
+if not CORS_ALLOWED_ORIGINS and DEBUG:
+    CORS_ALLOWED_ORIGINS = [
         'http://localhost:3000',
         'http://127.0.0.1:3000',
         'http://localhost:3001',
         'http://127.0.0.1:3001',
     ]
-)
 
 CORS_ALLOW_CREDENTIALS = True
 
