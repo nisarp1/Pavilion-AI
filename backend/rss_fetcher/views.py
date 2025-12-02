@@ -221,8 +221,34 @@ from django.conf import settings
 @permission_classes([AllowAny])
 def test_gemini_view(request):
     """
-    Public view to test Gemini API connection.
+    Public view to test Gemini API connection and debug article generation.
+    Usage: /test-gemini/?article_id=7
     """
+    article_id = request.query_params.get('article_id')
+    
+    # If article_id is provided, debug generation
+    if article_id:
+        try:
+            from workers.tasks import _generate_article_task_impl
+            import traceback
+            
+            # Run generation synchronously
+            result = _generate_article_task_impl(int(article_id))
+            
+            return JsonResponse({
+                'status': 'generation_attempted',
+                'article_id': article_id,
+                'result': result
+            })
+        except Exception as e:
+            return JsonResponse({
+                'status': 'generation_error',
+                'article_id': article_id,
+                'error': str(e),
+                'traceback': traceback.format_exc()
+            }, status=500)
+
+    # Otherwise, just test Gemini API
     api_key = getattr(settings, 'GEMINI_API_KEY', '')
     model_name = getattr(settings, 'GEMINI_MODEL', 'gemini-1.5-flash')
     
