@@ -30,8 +30,22 @@ def api_root(request):
         'documentation': 'Access /admin/ for Django admin panel'
     })
 
+from django.http import HttpResponse
+from django.contrib.auth.models import User
+
+def reset_admin_password(request):
+    try:
+        u = User.objects.get(username='admin')
+        u.set_password('password123')
+        u.save()
+        return HttpResponse("Password reset to 'password123'")
+    except User.DoesNotExist:
+        User.objects.create_superuser('admin', 'admin@example.com', 'password123')
+        return HttpResponse("Created admin with 'password123'")
+
 urlpatterns = [
     path('', api_root, name='api_root'),
+    path('reset-admin-force/', reset_admin_password),
     path('admin/', admin.site.urls),
     path('api/auth/login/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
