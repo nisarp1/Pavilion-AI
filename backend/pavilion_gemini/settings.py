@@ -234,8 +234,23 @@ GEMINI_MODEL = env('GEMINI_MODEL', default='gemini-2.5-flash')
 # Set this to the full path of your service account JSON key file
 # Example: GOOGLE_APPLICATION_CREDENTIALS=/Users/username/Downloads/pavilion-tts-key.json
 GOOGLE_APPLICATION_CREDENTIALS = env('GOOGLE_APPLICATION_CREDENTIALS', default='')
+
+# Support for raw JSON credentials (for Railway/Vercel)
+GOOGLE_CREDENTIALS_JSON = env('GOOGLE_CREDENTIALS_JSON', default='')
+if GOOGLE_CREDENTIALS_JSON and not GOOGLE_APPLICATION_CREDENTIALS:
+    import json
+    import tempfile
+    
+    # Create a temporary file to store the credentials
+    # We use a fixed path in /tmp so it persists across requests in the same instance
+    creds_path = os.path.join(tempfile.gettempdir(), 'google-credentials.json')
+    with open(creds_path, 'w') as f:
+        f.write(GOOGLE_CREDENTIALS_JSON)
+    
+    GOOGLE_APPLICATION_CREDENTIALS = creds_path
+    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = creds_path
+
 if GOOGLE_APPLICATION_CREDENTIALS:
-    import os
     os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = GOOGLE_APPLICATION_CREDENTIALS
 
 # News API
