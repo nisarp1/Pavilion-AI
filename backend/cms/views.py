@@ -89,6 +89,9 @@ class ArticleViewSet(viewsets.ModelViewSet):
         
         # Try to use Celery if available, otherwise run synchronously
         try:
+            # FORCE SYNCHRONOUS for now since Celery is not configured on Railway
+            raise Exception("Force synchronous generation")
+            
             from workers.tasks import generate_article_task
             # Try to run as Celery task
             task = generate_article_task.delay(article.id)
