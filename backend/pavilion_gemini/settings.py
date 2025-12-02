@@ -120,7 +120,7 @@ if FORCE_SCRIPT_NAME:
     STATIC_URL = f"{FORCE_SCRIPT_NAME}/static/"
     MEDIA_URL = f"{FORCE_SCRIPT_NAME}/media/"
 else:
-    STATIC_URL = 'static/'
+    STATIC_URL = '/static/'
     MEDIA_URL = '/media/'
 
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
