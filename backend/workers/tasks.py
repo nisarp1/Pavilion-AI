@@ -816,9 +816,9 @@ def _generate_article_task_impl(article_id):
         original_english_title = article.title
         
         # Fetch featured image from source URL (if not already present)
-        # if not article.featured_image and article.source_url:
-        #     logger.info(f"Fetching featured image from source URL: {article.source_url}")
-        #     fetch_and_save_featured_image(article)
+        if not article.featured_image and article.source_url:
+            logger.info(f"Fetching featured image from source URL: {article.source_url}")
+            fetch_and_save_featured_image(article)
         
         # Generate complete Malayalam content using Gemini AI
         logger.info(f"Starting Gemini generation for article {article_id}")
