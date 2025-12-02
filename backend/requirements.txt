@@ -31,7 +31,7 @@ python-slugify==8.0.1
 Pillow
 
 # Google Gemini AI
-google-generativeai
+google-generativeai>=0.7.0
 
 # Google Cloud Text-to-Speech
 google-cloud-texttospeech

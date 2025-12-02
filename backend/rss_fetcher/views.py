@@ -240,9 +240,18 @@ def test_gemini_view(request):
             'key_prefix': api_key[:5] + '...'
         })
     except Exception as e:
+        available_models = []
+        try:
+            for m in genai.list_models():
+                if 'generateContent' in m.supported_generation_methods:
+                    available_models.append(m.name)
+        except:
+            available_models = ["Could not list models"]
+
         return JsonResponse({
             'status': 'error', 
             'model': model_name,
             'error': str(e),
-            'key_prefix': api_key[:5] + '...'
+            'key_prefix': api_key[:5] + '...',
+            'available_models': available_models
         }, status=500)

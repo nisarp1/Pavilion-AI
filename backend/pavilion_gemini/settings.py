@@ -228,7 +228,7 @@ RSS_FEEDS = env.list('RSS_FEEDS', default=[])
 
 # Google Gemini AI
 GEMINI_API_KEY = env('GEMINI_API_KEY', default='')
-GEMINI_MODEL = env('GEMINI_MODEL', default='gemini-1.5-flash')
+GEMINI_MODEL = env('GEMINI_MODEL', default='gemini-pro')
 
 # Google Cloud Text-to-Speech
 # Set this to the full path of your service account JSON key file
