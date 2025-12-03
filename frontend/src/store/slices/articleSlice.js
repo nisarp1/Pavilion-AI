@@ -141,6 +141,7 @@ const articleSlice = createSlice({
     loading: false,
     error: null,
     generatingIds: [], // Array of IDs currently being generated
+    publishingIds: [], // Array of IDs currently being published
   },
   reducers: {
     clearCurrentArticle: (state) => {
@@ -156,6 +157,14 @@ const articleSlice = createSlice({
     },
     removeGeneratingId: (state, action) => {
       state.generatingIds = state.generatingIds.filter(id => id !== action.payload)
+    },
+    addPublishingId: (state, action) => {
+      if (!state.publishingIds.includes(action.payload)) {
+        state.publishingIds.push(action.payload)
+      }
+    },
+    removePublishingId: (state, action) => {
+      state.publishingIds = state.publishingIds.filter(id => id !== action.payload)
     },
   },
   extraReducers: (builder) => {
@@ -237,6 +246,6 @@ const articleSlice = createSlice({
   },
 })
 
-export const { clearCurrentArticle, clearError, addGeneratingId, removeGeneratingId } = articleSlice.actions
+export const { clearCurrentArticle, clearError, addGeneratingId, removeGeneratingId, addPublishingId, removePublishingId } = articleSlice.actions
 export default articleSlice.reducer
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
-import { fetchArticles, fetchTrends, fetchAllFeeds, generateArticle, publishArticle, archiveArticle, updateArticle, clearError, addGeneratingId, removeGeneratingId } from '../../store/slices/articleSlice'
+import { fetchArticles, fetchTrends, fetchAllFeeds, generateArticle, publishArticle, archiveArticle, updateArticle, clearError, addGeneratingId, removeGeneratingId, addPublishingId, removePublishingId } from '../../store/slices/articleSlice'
 import { fetchCategories } from '../../store/slices/categorySlice'
 import { format } from 'date-fns'
 import { FiEdit, FiPlay, FiCheck, FiArchive, FiRefreshCw, FiMoreVertical, FiEye, FiTrash2, FiClock, FiExternalLink, FiFilter } from 'react-icons/fi'
@@ -10,7 +10,7 @@ import BulkEditModal from './BulkEditModal'
 
 function ArticleList() {
   const dispatch = useDispatch()
-  const { items, loading, pagination, error, generatingIds = [] } = useSelector((state) => state.articles)
+  const { items, loading, pagination, error, generatingIds = [], publishingIds = [] } = useSelector((state) => state.articles)
   const { categories = [] } = useSelector((state) => state.categories || {})
   const [activeTab, setActiveTab] = useState('all')
   const [selectedCategory, setSelectedCategory] = useState('')
@@ -184,8 +184,15 @@ function ArticleList() {
   }
 
   const handlePublish = async (articleId) => {
-    await dispatch(publishArticle(articleId))
-    refreshList()
+    dispatch(addPublishingId(articleId))
+    try {
+      await dispatch(publishArticle(articleId))
+      refreshList()
+    } catch (error) {
+      console.error('Error publishing article:', error)
+    } finally {
+      dispatch(removePublishingId(articleId))
+    }
   }
 
   const handleArchive = async (articleId) => {
@@ -710,11 +717,21 @@ function ArticleList() {
                           <>
                             <button
                               onClick={() => handlePublish(article.id)}
-                              className="px-3 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 transition-colors text-xs font-medium flex items-center gap-1"
+                              disabled={publishingIds.includes(article.id)}
+                              className="px-3 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-green-400 disabled:cursor-not-allowed transition-colors text-xs font-medium flex items-center gap-1"
                               title="Publish"
                             >
-                              <FiCheck size={12} />
-                              Publish
+                              {publishingIds.includes(article.id) ? (
+                                <>
+                                  <FiRefreshCw className="animate-spin" size={12} />
+                                  Publishing...
+                                </>
+                              ) : (
+                                <>
+                                  <FiCheck size={12} />
+                                  Publish
+                                </>
+                              )}
                             </button>
                             <Link
                               to={`/articles/${article.id}/edit`}
@@ -776,10 +793,20 @@ function ArticleList() {
                                         handlePublish(article.id)
                                         setShowQuickActions(null)
                                       }}
-                                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                      disabled={publishingIds.includes(article.id)}
+                                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
                                     >
-                                      <FiCheck className="inline mr-2" size={14} />
-                                      Publish
+                                      {publishingIds.includes(article.id) ? (
+                                        <>
+                                          <FiRefreshCw className="animate-spin inline mr-2" size={14} />
+                                          Publishing...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <FiCheck className="inline mr-2" size={14} />
+                                          Publish
+                                        </>
+                                      )}
                                     </button>
                                   )}
                                   {article.status === 'published' && (
