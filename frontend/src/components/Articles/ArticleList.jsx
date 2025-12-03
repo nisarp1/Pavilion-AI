@@ -10,11 +10,10 @@ import BulkEditModal from './BulkEditModal'
 
 function ArticleList() {
   const dispatch = useDispatch()
-  const { items, loading, pagination, error } = useSelector((state) => state.articles)
+  const { items, loading, pagination, error, generatingIds = [] } = useSelector((state) => state.articles)
   const { categories = [] } = useSelector((state) => state.categories || {})
   const [activeTab, setActiveTab] = useState('all')
   const [selectedCategory, setSelectedCategory] = useState('')
-  const [generatingArticles, setGeneratingArticles] = useState(new Set())
   const [refreshing, setRefreshing] = useState(false)
   const [selectedArticles, setSelectedArticles] = useState(new Set())
   const [showQuickActions, setShowQuickActions] = useState(null)
@@ -33,6 +32,50 @@ function ArticleList() {
         }
       })
   }, [dispatch])
+
+  // Resume polling for generating articles on mount
+  useEffect(() => {
+    if (generatingIds.length > 0) {
+      generatingIds.forEach(id => {
+        pollForCompletion(id)
+      })
+    }
+  }, [generatingIds.length]) // Only run when length changes (e.g. initial load)
+
+  const pollForCompletion = (articleId) => {
+    let attempts = 0
+    const maxAttempts = 90 // 3 minutes max (2s interval)
+
+    // Check if interval already exists for this ID? 
+    // Ideally we should track intervals, but for simplicity we'll just start a new one
+    // and rely on the status check to clear it quickly if done.
+
+    const pollInterval = setInterval(async () => {
+      attempts++
+      try {
+        // Check article status
+        const fetchResult = await dispatch(fetchArticle(articleId))
+        if (fetchArticle.fulfilled.match(fetchResult)) {
+          const article = fetchResult.payload
+          if (article.status === 'draft' || article.status === 'published') {
+            clearInterval(pollInterval)
+            refreshList()
+            dispatch(removeGeneratingId(articleId))
+          }
+        }
+      } catch (e) {
+        console.error('Polling error:', e)
+      }
+
+      if (attempts >= maxAttempts) {
+        clearInterval(pollInterval)
+        dispatch(removeGeneratingId(articleId))
+      }
+    }, 2000)
+
+    // Cleanup interval on unmount
+    return () => clearInterval(pollInterval)
+  }
 
   useEffect(() => {
     setCurrentPage(1) // Reset to first page when tab changes
@@ -121,68 +164,22 @@ function ArticleList() {
   }
 
   const handleGenerate = async (articleId) => {
-    setGeneratingArticles(prev => new Set(prev).add(articleId))
+    dispatch(addGeneratingId(articleId))
     try {
       const result = await dispatch(generateArticle(articleId))
       if (generateArticle.fulfilled.match(result)) {
         // Success - backend accepted the request (202 Accepted)
-        // Now poll for status change since generation happens in background
-
-        let attempts = 0
-        const maxAttempts = 90 // 3 minutes max (2s interval)
-
-        const pollInterval = setInterval(async () => {
-          attempts++
-          try {
-            // Check article status
-            const fetchResult = await dispatch(fetchArticle(articleId))
-            if (fetchArticle.fulfilled.match(fetchResult)) {
-              const article = fetchResult.payload
-              // If status changed from 'fetched' (e.g. to 'draft' or 'generating'), we are done
-              // Note: Backend might set it to 'generating' first, but we want to wait for 'draft'
-              // actually, let's wait for 'draft' or 'published'
-              if (article.status === 'draft' || article.status === 'published') {
-                clearInterval(pollInterval)
-                refreshList()
-                setGeneratingArticles(prev => {
-                  const next = new Set(prev)
-                  next.delete(articleId)
-                  return next
-                })
-              }
-            }
-          } catch (e) {
-            console.error('Polling error:', e)
-          }
-
-          if (attempts >= maxAttempts) {
-            clearInterval(pollInterval)
-            setGeneratingArticles(prev => {
-              const next = new Set(prev)
-              next.delete(articleId)
-              return next
-            })
-            // Optional: alert user about timeout
-          }
-        }, 2000)
-
+        // Start polling
+        pollForCompletion(articleId)
       } else {
         // Still show error alerts for debugging
         console.error('Error generating article:', result.payload)
-        setGeneratingArticles(prev => {
-          const next = new Set(prev)
-          next.delete(articleId)
-          return next
-        })
+        dispatch(removeGeneratingId(articleId))
       }
     } catch (error) {
       // Still show error alerts for debugging
       console.error('Error generating article:', error)
-      setGeneratingArticles(prev => {
-        const next = new Set(prev)
-        next.delete(articleId)
-        return next
-      })
+      dispatch(removeGeneratingId(articleId))
     }
   }
 
@@ -341,8 +338,8 @@ function ArticleList() {
             onClick={handleRefresh}
             disabled={refreshing}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${refreshing
-                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
           >
             <FiRefreshCw className={refreshing ? 'animate-spin' : ''} size={16} />
@@ -401,8 +398,8 @@ function ArticleList() {
           <button
             onClick={() => setActiveTab('all')}
             className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'all'
-                ? 'border-primary-600 text-primary-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              ? 'border-primary-600 text-primary-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
           >
             All
@@ -410,8 +407,8 @@ function ArticleList() {
           <button
             onClick={() => setActiveTab('published')}
             className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'published'
-                ? 'border-primary-600 text-primary-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              ? 'border-primary-600 text-primary-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
           >
             Published
@@ -419,8 +416,8 @@ function ArticleList() {
           <button
             onClick={() => setActiveTab('draft')}
             className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'draft'
-                ? 'border-primary-600 text-primary-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              ? 'border-primary-600 text-primary-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
           >
             Draft
@@ -428,8 +425,8 @@ function ArticleList() {
           <button
             onClick={() => setActiveTab('fetched')}
             className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'fetched'
-                ? 'border-primary-600 text-primary-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              ? 'border-primary-600 text-primary-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
           >
             Fetched
@@ -437,8 +434,8 @@ function ArticleList() {
           <button
             onClick={() => setActiveTab('archived')}
             className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'archived'
-                ? 'border-primary-600 text-primary-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              ? 'border-primary-600 text-primary-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
           >
             Trash
@@ -447,8 +444,8 @@ function ArticleList() {
             <button
               onClick={() => setActiveTab('reliable_sources')}
               className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'reliable_sources'
-                  ? 'border-primary-600 text-primary-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                ? 'border-primary-600 text-primary-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
             >
               Reliable Sources
@@ -456,8 +453,8 @@ function ArticleList() {
             <button
               onClick={() => setActiveTab('trends')}
               className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'trends'
-                  ? 'border-primary-600 text-primary-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                ? 'border-primary-600 text-primary-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
             >
               Trends
@@ -465,8 +462,8 @@ function ArticleList() {
             <button
               onClick={() => setActiveTab('subscriptions')}
               className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'subscriptions'
-                  ? 'border-primary-600 text-primary-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                ? 'border-primary-600 text-primary-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
             >
               Subscriptions
@@ -692,11 +689,11 @@ function ArticleList() {
                         {article.status === 'fetched' && (
                           <button
                             onClick={() => handleGenerate(article.id)}
-                            disabled={generatingArticles.has(article.id)}
+                            disabled={generatingIds.includes(article.id)}
                             className="px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed transition-colors text-xs font-medium flex items-center gap-1"
                             title="Generate Article"
                           >
-                            {generatingArticles.has(article.id) ? (
+                            {generatingIds.includes(article.id) ? (
                               <>
                                 <FiRefreshCw className="animate-spin" size={12} />
                                 Generating...
@@ -873,8 +870,8 @@ function ArticleList() {
                     key={pageNum}
                     onClick={() => handlePageChange(pageNum)}
                     className={`px-3 py-1.5 text-sm rounded-lg ${currentPage === pageNum
-                        ? 'bg-primary-600 text-white'
-                        : 'border border-gray-300 hover:bg-gray-50'
+                      ? 'bg-primary-600 text-white'
+                      : 'border border-gray-300 hover:bg-gray-50'
                       }`}
                   >
                     {pageNum}
