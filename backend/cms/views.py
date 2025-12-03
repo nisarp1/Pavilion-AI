@@ -82,7 +82,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
     def generate(self, request, pk=None):
         """
         Trigger article generation for a fetched article.
-        Works synchronously if Celery is not available.
+        Uses threading to avoid blocking the main server process.
         """
         article = self.get_object()
         
@@ -92,55 +92,33 @@ class ArticleViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Try to use Celery if available, otherwise run synchronously
-        try:
-            # FORCE SYNCHRONOUS for now since Celery is not configured on Railway
-            raise Exception("Force synchronous generation")
-            
-            from workers.tasks import generate_article_task
-            # Try to run as Celery task
-            task = generate_article_task.delay(article.id)
-            return Response({
-                'message': 'Article generation started',
-                'task_id': task.id,
-                'article_id': article.id
-            }, status=status.HTTP_202_ACCEPTED)
-        except Exception as celery_error:
-            # Celery not available, run synchronously
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.info(f"Celery not available, running synchronously: {str(celery_error)}")
-            
+        # Use threading to run generation in background without blocking the server
+        import threading
+        
+        def run_generation_task(article_id):
             try:
                 from workers.tasks import _generate_article_task_impl
-                # Call the implementation function directly (synchronously)
-                result = _generate_article_task_impl(article.id)
+                import logging
+                logger = logging.getLogger(__name__)
                 
-                # Refresh article from database
-                article.refresh_from_db()
-                
-                if result and result.get('success'):
-                    return Response({
-                        'message': 'Article generated successfully',
-                        'article_id': article.id,
-                        'status': article.status
-                    }, status=status.HTTP_200_OK)
-                else:
-                    error_msg = result.get('error', 'Generation failed') if result else 'Generation failed'
-                    logger.error(f"Article generation failed: {error_msg}")
-                    return Response({
-                        'error': error_msg
-                    }, status=status.HTTP_400_BAD_REQUEST)
-            except ImportError as import_error:
-                logger.error(f"Failed to import generation function: {str(import_error)}")
-                return Response({
-                    'error': f'Failed to import generation module: {str(import_error)}'
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                logger.info(f"Starting threaded generation for article {article_id}")
+                _generate_article_task_impl(article_id)
+                logger.info(f"Threaded generation completed for article {article_id}")
             except Exception as e:
-                logger.error(f"Error generating article: {str(e)}", exc_info=True)
-                return Response({
-                    'error': f'Generation error: {str(e)}'
-                }, status=status.HTTP_400_BAD_REQUEST)
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Threaded generation failed: {e}", exc_info=True)
+
+        # Start generation in a background thread
+        thread = threading.Thread(target=run_generation_task, args=(article.id,))
+        thread.daemon = True
+        thread.start()
+        
+        return Response({
+            'message': 'Article generation started',
+            'article_id': article.id,
+            'status': 'generating'
+        }, status=status.HTTP_202_ACCEPTED)
     
     @action(detail=True, methods=['post'])
     def publish(self, request, pk=None):
