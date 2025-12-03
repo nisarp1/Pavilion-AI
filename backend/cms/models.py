@@ -8,6 +8,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from slugify import slugify
 import os
+from .utils import process_image_to_webp
 
 
 def generate_unique_slug(instance, value, slug_field='slug'):
@@ -123,6 +124,15 @@ class Media(models.Model):
         return self.title or self.file.name
     
     def save(self, *args, **kwargs):
+        # Convert image to WebP if it's not already
+        if self.file and not self.file.name.lower().endswith('.webp'):
+            try:
+                new_name, new_content = process_image_to_webp(self.file)
+                if new_name and new_content:
+                    self.file.save(new_name, new_content, save=False)
+            except Exception as e:
+                pass
+
         if not self.title and self.file:
             self.title = self.file.name
         super().save(*args, **kwargs)
@@ -309,6 +319,15 @@ class Article(models.Model):
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = generate_unique_slug(self, self.title)
+
+        # Convert featured_image to WebP if it's not already
+        if self.featured_image and not self.featured_image.name.lower().endswith('.webp'):
+            try:
+                new_name, new_content = process_image_to_webp(self.featured_image)
+                if new_name and new_content:
+                    self.featured_image.save(new_name, new_content, save=False)
+            except Exception as e:
+                pass
         
         # Track status change for audio generation
         if self.pk:

@@ -295,18 +295,36 @@ def fetch_and_save_featured_image(article, image_url=None):
             
             # Reset BytesIO
             img_data.seek(0)
+            img_data.name = f"article_{article.id}_featured.{file_ext}"
             
-            # Create filename
-            filename = f"article_{article.id}_featured.{file_ext}"
+            # Convert to WebP
+            try:
+                from cms.utils import process_image_to_webp
+                new_name, new_content = process_image_to_webp(img_data)
+                
+                if new_name and new_content:
+                    logger.info(f"Converted fetched image to WebP: {new_name}")
+                    article.featured_image.save(new_name, new_content, save=True)
+                else:
+                    # Fallback to original
+                    logger.warning("WebP conversion failed, saving original")
+                    img_data.seek(0)
+                    article.featured_image.save(
+                        img_data.name,
+                        ContentFile(img_data.read()),
+                        save=True
+                    )
+            except Exception as e:
+                logger.error(f"Error converting to WebP: {e}")
+                # Fallback to original
+                img_data.seek(0)
+                article.featured_image.save(
+                    img_data.name,
+                    ContentFile(img_data.read()),
+                    save=True
+                )
             
-            # Save to article
-            article.featured_image.save(
-                filename,
-                ContentFile(img_data.read()),
-                save=True
-            )
-            
-            logger.info(f"Featured image saved for article {article.id}: {filename}")
+            logger.info(f"Featured image saved for article {article.id}")
             
         except Exception as e:
             logger.error(f"Invalid image file for article {article.id}: {str(e)}")
