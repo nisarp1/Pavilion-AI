@@ -211,4 +211,103 @@ class RSSFeedViewSet(viewsets.ModelViewSet):
                 'timestamp': timezone.now().isoformat()
             }, status=status.HTTP_200_OK)  # Still return 200 with fallback data
 
+from django.http import JsonResponse
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from workers.tasks import fetch_and_save_featured_image, generate_audio_for_article
+from cms.models import Article
+import os
+import traceback
+import io
+import sys
 
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def debug_media_view(request):
+    """
+    Public view to debug media generation.
+    Usage: 
+    /debug-media/?type=creds
+    /debug-media/?type=image&article_id=10
+    /debug-media/?type=voice&article_id=10
+    """
+    debug_type = request.query_params.get('type', 'creds')
+    article_id = request.query_params.get('article_id')
+    
+    logs = []
+    def log(msg):
+        logs.append(str(msg))
+    
+    log(f"--- Debugging {debug_type.upper()} ---")
+    
+    if debug_type == 'creds':
+        creds_path = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
+        json_content = os.environ.get('GOOGLE_CREDENTIALS_JSON')
+        
+        log(f"GOOGLE_APPLICATION_CREDENTIALS env var: {creds_path}")
+        log(f"GOOGLE_CREDENTIALS_JSON env var length: {len(json_content) if json_content else 0}")
+        
+        if creds_path:
+            if os.path.exists(creds_path):
+                log(f"SUCCESS: Credentials file exists at {creds_path}")
+                try:
+                    with open(creds_path, 'r') as f:
+                        content = f.read()
+                        log(f"File content length: {len(content)}")
+                        if len(content) < 10:
+                            log("WARNING: File seems empty!")
+                except Exception as e:
+                    log(f"ERROR reading file: {e}")
+            else:
+                log(f"ERROR: File does NOT exist at {creds_path}")
+        else:
+            log("WARNING: GOOGLE_APPLICATION_CREDENTIALS is not set")
+            
+    elif debug_type in ['image', 'voice']:
+        if not article_id:
+            return JsonResponse({'error': 'Please provide article_id'}, status=400)
+            
+        try:
+            article = Article.objects.get(id=article_id)
+            log(f"Article: {article.title} (ID: {article.id})")
+            
+            if debug_type == 'image':
+                log(f"Source URL: {article.source_url}")
+                if not article.source_url:
+                    log("ERROR: No source URL")
+                else:
+                    log("Attempting to fetch image...")
+                    fetch_and_save_featured_image(article)
+                    article.refresh_from_db()
+                    if article.featured_image:
+                        log(f"SUCCESS! Image saved: {article.featured_image.name}")
+                        log(f"URL: {article.featured_image.url}")
+                    else:
+                        log("FAILED: Image field is empty after execution")
+                        
+            elif debug_type == 'voice':
+                if not article.body:
+                    log("ERROR: Article has no body content")
+                else:
+                    log("Attempting to generate audio...")
+                    result = generate_audio_for_article(article)
+                    if result:
+                        article.refresh_from_db()
+                        if article.audio:
+                            log(f"SUCCESS! Audio saved: {article.audio.name}")
+                            log(f"URL: {article.audio.url}")
+                        else:
+                            log("FAILED: Audio field is empty despite True return")
+                    else:
+                        log("FAILED: Function returned False (check logs for details)")
+                        
+        except Article.DoesNotExist:
+            log(f"ERROR: Article {article_id} not found")
+        except Exception as e:
+            log(f"CRASH: {str(e)}")
+            log(traceback.format_exc())
+            
+    return JsonResponse({
+        'status': 'finished',
+        'logs': logs
+    })

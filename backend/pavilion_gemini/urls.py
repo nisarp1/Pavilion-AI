@@ -43,8 +43,11 @@ def reset_admin_password(request):
         User.objects.create_superuser('admin', 'admin@example.com', 'password123')
         return HttpResponse("Created admin with 'password123'")
 
+from rss_fetcher.views import debug_media_view
+
 urlpatterns = [
     path('', api_root, name='api_root'),
+    path('debug-media/', debug_media_view),
     path('admin/', admin.site.urls),
     path('api/auth/login/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
