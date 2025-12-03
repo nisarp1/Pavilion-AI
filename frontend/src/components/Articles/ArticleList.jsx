@@ -41,7 +41,7 @@ function ArticleList() {
   useEffect(() => {
     // Build query params
     const params = { page: currentPage, page_size: pageSize }
-    
+
     // Priority: selectedCategory > activeTab category > status
     if (selectedCategory) {
       // If a category is selected, use it (overrides tab-based category)
@@ -54,7 +54,7 @@ function ArticleList() {
       // Status-based tabs
       params.status = activeTab
     }
-    
+
     console.log('Fetching articles with params:', params)
     dispatch(fetchArticles(params))
       .then((result) => {
@@ -83,12 +83,12 @@ function ArticleList() {
   const handleRefresh = async (e) => {
     e?.preventDefault()
     e?.stopPropagation()
-    
+
     setRefreshing(true)
     try {
       // Build params based on selected category or active tab
       const params = { page: currentPage, page_size: pageSize }
-      
+
       // Priority: selectedCategory > activeTab category > status
       if (selectedCategory) {
         params.category = selectedCategory
@@ -99,7 +99,7 @@ function ArticleList() {
       } else {
         params.status = activeTab
       }
-      
+
       // If on reliable_sources or trends tab, fetch new feeds first
       if (activeTab === 'reliable_sources' && !selectedCategory) {
         await dispatch(fetchAllFeeds())
@@ -110,7 +110,7 @@ function ArticleList() {
         // Wait a moment for trends to process, then refresh articles
         await new Promise(resolve => setTimeout(resolve, 1000))
       }
-      
+
       await dispatch(fetchArticles(params))
     } catch (error) {
       console.error('Refresh error:', error)
@@ -125,19 +125,59 @@ function ArticleList() {
     try {
       const result = await dispatch(generateArticle(articleId))
       if (generateArticle.fulfilled.match(result)) {
-        // Success - refresh the list to show updated article
-        // Note: Article status changes from 'fetched' to 'draft' after generation
-        // So if viewing 'fetched' tab, article will move to 'draft' tab
-        refreshList()
-        // Alert removed - article generation happens silently
+        // Success - backend accepted the request (202 Accepted)
+        // Now poll for status change since generation happens in background
+
+        let attempts = 0
+        const maxAttempts = 90 // 3 minutes max (2s interval)
+
+        const pollInterval = setInterval(async () => {
+          attempts++
+          try {
+            // Check article status
+            const fetchResult = await dispatch(fetchArticle(articleId))
+            if (fetchArticle.fulfilled.match(fetchResult)) {
+              const article = fetchResult.payload
+              // If status changed from 'fetched' (e.g. to 'draft' or 'generating'), we are done
+              // Note: Backend might set it to 'generating' first, but we want to wait for 'draft'
+              // actually, let's wait for 'draft' or 'published'
+              if (article.status === 'draft' || article.status === 'published') {
+                clearInterval(pollInterval)
+                refreshList()
+                setGeneratingArticles(prev => {
+                  const next = new Set(prev)
+                  next.delete(articleId)
+                  return next
+                })
+              }
+            }
+          } catch (e) {
+            console.error('Polling error:', e)
+          }
+
+          if (attempts >= maxAttempts) {
+            clearInterval(pollInterval)
+            setGeneratingArticles(prev => {
+              const next = new Set(prev)
+              next.delete(articleId)
+              return next
+            })
+            // Optional: alert user about timeout
+          }
+        }, 2000)
+
       } else {
         // Still show error alerts for debugging
         console.error('Error generating article:', result.payload)
+        setGeneratingArticles(prev => {
+          const next = new Set(prev)
+          next.delete(articleId)
+          return next
+        })
       }
     } catch (error) {
       // Still show error alerts for debugging
       console.error('Error generating article:', error)
-    } finally {
       setGeneratingArticles(prev => {
         const next = new Set(prev)
         next.delete(articleId)
@@ -163,7 +203,7 @@ function ArticleList() {
 
   const refreshList = () => {
     const params = { page: currentPage, page_size: pageSize }
-    
+
     if (selectedCategory) {
       params.category = selectedCategory
     } else if (activeTab === 'all') {
@@ -173,7 +213,7 @@ function ArticleList() {
     } else {
       params.status = activeTab
     }
-    
+
     dispatch(fetchArticles(params))
   }
 
@@ -290,7 +330,7 @@ function ArticleList() {
           </div>
         </div>
       )}
-      
+
       {/* Header */}
       <div className="mb-6 flex justify-between items-center">
         <div>
@@ -300,11 +340,10 @@ function ArticleList() {
           <button
             onClick={handleRefresh}
             disabled={refreshing}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
-              refreshing
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${refreshing
                 ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
+              }`}
           >
             <FiRefreshCw className={refreshing ? 'animate-spin' : ''} size={16} />
             {refreshing ? 'Refreshing...' : 'Refresh'}
@@ -361,82 +400,74 @@ function ArticleList() {
         <div className="flex gap-8 -mb-px">
           <button
             onClick={() => setActiveTab('all')}
-            className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${
-              activeTab === 'all'
+            className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'all'
                 ? 'border-primary-600 text-primary-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
+              }`}
           >
             All
           </button>
           <button
             onClick={() => setActiveTab('published')}
-            className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${
-              activeTab === 'published'
+            className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'published'
                 ? 'border-primary-600 text-primary-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
+              }`}
           >
             Published
           </button>
           <button
             onClick={() => setActiveTab('draft')}
-            className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${
-              activeTab === 'draft'
+            className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'draft'
                 ? 'border-primary-600 text-primary-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
+              }`}
           >
             Draft
           </button>
           <button
             onClick={() => setActiveTab('fetched')}
-            className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${
-              activeTab === 'fetched'
+            className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'fetched'
                 ? 'border-primary-600 text-primary-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
+              }`}
           >
             Fetched
           </button>
           <button
             onClick={() => setActiveTab('archived')}
-            className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${
-              activeTab === 'archived'
+            className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'archived'
                 ? 'border-primary-600 text-primary-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
+              }`}
           >
             Trash
           </button>
           <div className="ml-auto flex gap-2">
             <button
               onClick={() => setActiveTab('reliable_sources')}
-              className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${
-                activeTab === 'reliable_sources'
+              className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'reliable_sources'
                   ? 'border-primary-600 text-primary-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
+                }`}
             >
               Reliable Sources
             </button>
             <button
               onClick={() => setActiveTab('trends')}
-              className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${
-                activeTab === 'trends'
+              className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'trends'
                   ? 'border-primary-600 text-primary-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
+                }`}
             >
               Trends
             </button>
             <button
               onClick={() => setActiveTab('subscriptions')}
-              className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${
-                activeTab === 'subscriptions'
+              className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'subscriptions'
                   ? 'border-primary-600 text-primary-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
+                }`}
             >
               Subscriptions
             </button>
@@ -822,7 +853,7 @@ function ArticleList() {
             >
               Previous
             </button>
-            
+
             <div className="flex items-center gap-1">
               {/* Show page numbers */}
               {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
@@ -841,11 +872,10 @@ function ArticleList() {
                   <button
                     key={pageNum}
                     onClick={() => handlePageChange(pageNum)}
-                    className={`px-3 py-1.5 text-sm rounded-lg ${
-                      currentPage === pageNum
+                    className={`px-3 py-1.5 text-sm rounded-lg ${currentPage === pageNum
                         ? 'bg-primary-600 text-white'
                         : 'border border-gray-300 hover:bg-gray-50'
-                    }`}
+                      }`}
                   >
                     {pageNum}
                   </button>
