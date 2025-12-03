@@ -46,7 +46,12 @@ class ArticleViewSet(viewsets.ModelViewSet):
         return context
     
     def get_queryset(self):
-        queryset = Article.objects.all()
+        queryset = Article.objects.all().select_related(
+            'author', 'editor'
+        ).prefetch_related(
+            'categories'
+        )
+        
         status_filter = self.request.query_params.get('status', None)
         category_filter = self.request.query_params.get('category', None)
         
