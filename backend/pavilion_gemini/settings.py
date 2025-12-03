@@ -239,8 +239,9 @@ GEMINI_MODEL = env('GEMINI_MODEL', default='gemini-2.5-flash')
 GOOGLE_APPLICATION_CREDENTIALS = env('GOOGLE_APPLICATION_CREDENTIALS', default='')
 
 # Support for raw JSON credentials (for Railway/Vercel)
+# Support for raw JSON credentials (for Railway/Vercel)
 GOOGLE_CREDENTIALS_JSON = env('GOOGLE_CREDENTIALS_JSON', default='')
-if GOOGLE_CREDENTIALS_JSON and not GOOGLE_APPLICATION_CREDENTIALS:
+if GOOGLE_CREDENTIALS_JSON:
     import json
     import tempfile
     
