@@ -10,6 +10,39 @@ import ReactQuill from 'react-quill'
 import 'react-quill/dist/quill.snow.css'
 import Quill from 'quill'
 import { convertUrlToEmbed } from '../../utils/embedUtils'
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { FiImage, FiUser, FiLink, FiTag, FiExternalLink, FiVolume2, FiDownload, FiMove } from 'react-icons/fi'
+
+function SortableSidebarItem(props) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id: props.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} className="relative group">
+      <div
+        {...attributes}
+        {...listeners}
+        className="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity z-10 bg-white rounded-full shadow-sm"
+        title="Drag to reorder"
+      >
+        <FiMove size={14} />
+      </div>
+      {props.children}
+    </div>
+  )
+}
 
 function ArticleEdit() {
   const { id } = useParams()
@@ -39,6 +72,50 @@ function ArticleEdit() {
     og_description: '',
     published_at: '',
   })
+
+  const [sidebarOrder, setSidebarOrder] = useState([
+    'status',
+    'audio',
+    'featured_image',
+    'author',
+    'slug',
+    'reference_link',
+    'source',
+    'categories'
+  ])
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
+
+  useEffect(() => {
+    const savedOrder = localStorage.getItem('articleEditSidebarOrder')
+    if (savedOrder) {
+      try {
+        const parsed = JSON.parse(savedOrder)
+        const defaultKeys = ['status', 'audio', 'featured_image', 'author', 'slug', 'reference_link', 'source', 'categories']
+        const merged = [...new Set([...parsed, ...defaultKeys])]
+        setSidebarOrder(merged)
+      } catch (e) { }
+    }
+  }, [])
+
+  const handleDragEnd = (event) => {
+    const { active, over } = event
+
+    if (active.id !== over.id) {
+      setSidebarOrder((items) => {
+        const oldIndex = items.indexOf(active.id)
+        const newIndex = items.indexOf(over.id)
+        const newOrder = arrayMove(items, oldIndex, newIndex)
+        localStorage.setItem('articleEditSidebarOrder', JSON.stringify(newOrder))
+        return newOrder
+      })
+    }
+  }
   useEffect(() => {
     dispatch(fetchArticle(id))
     dispatch(fetchCategoryTree())
@@ -58,7 +135,7 @@ function ArticleEdit() {
         const minutes = String(date.getMinutes()).padStart(2, '0')
         publishedAt = `${year}-${month}-${day}T${hours}:${minutes}`
       }
-      
+
       setFormData({
         title: currentArticle.title || '',
         slug: currentArticle.slug || '',
@@ -82,65 +159,65 @@ function ArticleEdit() {
   useEffect(() => {
     let handlePaste = null
     let timer = null
-    
+
     try {
       // Wait for editor to be ready
       timer = setTimeout(() => {
         try {
           if (!quillRef.current) return
-          
+
           const quill = quillRef.current.getEditor()
           if (!quill || !quill.root) return
-          
+
           handlePaste = async (e) => {
             const clipboardData = e.clipboardData || window.clipboardData
             if (!clipboardData) return
-            
+
             const text = clipboardData.getData('text/plain')
             if (!text) return
-            
+
             const trimmedText = text.trim()
-            
+
             // Check if it's a pure URL (exactly matches URL pattern)
             const urlRegex = /^(https?:\/\/[^\s]+)$/i
             if (!urlRegex.test(trimmedText)) return
-            
+
             const url = trimmedText
-            
+
             // Check if it's an embeddable URL
             if (!/youtube\.com|youtu\.be|twitter\.com|x\.com|instagram\.com|facebook\.com/i.test(url)) {
               return
             }
-            
+
             // Convert URL to embed HTML
             const embedHtml = convertUrlToEmbed(url)
             if (!embedHtml) return
-            
+
             // Prevent default paste behavior
             e.preventDefault()
             e.stopPropagation()
-            
+
             // Get current selection or end of document
             const range = quill.getSelection(true)
             const index = range ? range.index : quill.getLength()
-            
+
             // Create embed wrapper HTML
             const wrapperHtml = `<div class="ql-video-embed" contenteditable="false" style="margin: 1rem 0; text-align: center; max-width: 100%;">${embedHtml}</div><p><br></p>`
-            
+
             // Insert embed HTML using Quill's clipboard API
             quill.clipboard.dangerouslyPasteHTML(index, wrapperHtml, 'user')
-            
+
             // Move cursor after embed
             setTimeout(() => {
               const newLength = quill.getLength()
               quill.setSelection(newLength, 'silent')
             }, 10)
           }
-          
+
           // Attach paste handler to editor root with capture phase
           const editorElement = quill.root
           editorElement.addEventListener('paste', handlePaste, true)
-          
+
           console.log('✅ Embed paste handler registered (proven method)')
         } catch (error) {
           console.error('Error setting up paste handler:', error)
@@ -149,7 +226,7 @@ function ArticleEdit() {
     } catch (error) {
       console.error('Error in paste handler useEffect:', error)
     }
-    
+
     return () => {
       if (timer) {
         clearTimeout(timer)
@@ -184,7 +261,7 @@ function ArticleEdit() {
     setSaving(true)
     try {
       const dataToSave = { ...formData, status }
-      
+
       // Convert published_at from datetime-local format to ISO string
       if (dataToSave.published_at) {
         const date = new Date(dataToSave.published_at)
@@ -193,13 +270,13 @@ function ArticleEdit() {
         // If publishing and no published_at set, use current time
         dataToSave.published_at = new Date().toISOString()
       }
-      
+
       await dispatch(updateArticle({ id, data: dataToSave })).unwrap()
-      
+
       if (status === 'published') {
         await dispatch(publishArticle(id))
       }
-      
+
       navigate('/articles')
     } catch (error) {
       console.error('Error saving article:', error)
@@ -242,7 +319,7 @@ function ArticleEdit() {
 
       const updatedArticle = response.data
       dispatch({ type: 'articles/updateArticle/fulfilled', payload: updatedArticle })
-      
+
       // Refresh the article to get the new image URL
       dispatch(fetchArticle(id))
     } catch (error) {
@@ -292,7 +369,7 @@ function ArticleEdit() {
       const response = await api.post(`/articles/${id}/generate_audio/`, {
         voice_name: voiceName
       })
-      
+
       const audioUrl = response.data.audio_url || response.data.article?.audio_url
       if (audioUrl) {
         // Store the audio URL for this specific voice
@@ -314,8 +391,8 @@ function ArticleEdit() {
   // Helper function to get full audio URL
   const getFullAudioUrl = (audioUrl) => {
     if (!audioUrl) return null
-    return audioUrl?.startsWith('http') 
-      ? audioUrl 
+    return audioUrl?.startsWith('http')
+      ? audioUrl
       : `http://localhost:8000${audioUrl?.startsWith('/') ? '' : '/'}${audioUrl}`
   }
 
@@ -333,22 +410,377 @@ function ArticleEdit() {
     { value: 'subscriptions', label: 'Subscriptions' },
   ]
 
+  const sidebarComponents = {
+    status: (
+      <div className="bg-white rounded-lg shadow p-6">
+        <h3 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide">Status</h3>
+        <div className="space-y-2">
+          <label className="flex items-center">
+            <input
+              type="radio"
+              name="status"
+              value="draft"
+              checked={formData.status === 'draft'}
+              onChange={() => handleStatusChange('draft')}
+              className="w-4 h-4 text-primary-600 focus:ring-primary-500"
+            />
+            <span className="ml-2 text-sm text-gray-700">Draft</span>
+          </label>
+          <label className="flex items-center">
+            <input
+              type="radio"
+              name="status"
+              value="published"
+              checked={formData.status === 'published'}
+              onChange={() => handleStatusChange('published')}
+              className="w-4 h-4 text-primary-600 focus:ring-primary-500"
+            />
+            <span className="ml-2 text-sm text-gray-700">Published</span>
+          </label>
+        </div>
+
+        {formData.status === 'published' && (
+          <div className="mt-4 pt-4 border-t border-gray-200">
+            <label htmlFor="published_at" className="block text-sm font-medium text-gray-700 mb-2">
+              Published Date & Time
+            </label>
+            <input
+              type="datetime-local"
+              id="published_at"
+              name="published_at"
+              value={formData.published_at || ''}
+              onChange={handleChange}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Change when this article was/will be published
+            </p>
+          </div>
+        )}
+      </div>
+    ),
+    audio: (
+      currentArticle.body && currentArticle.body.trim() ? (
+        <div className="bg-white rounded-lg shadow p-6">
+          <h3 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide flex items-center gap-2">
+            <FiVolume2 size={16} />
+            Audio Comparison (Malayalam Voices)
+          </h3>
+          <p className="text-xs text-gray-500 mb-4">
+            Compare all three premium voices for news reading. Generate and play each voice to find the best one.
+          </p>
+
+          <div className="space-y-4">
+            {/* Chirp Voice */}
+            <div className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-800">🥇 Chirp Voice</h4>
+                  <p className="text-xs text-gray-500">Best Quality - Most Natural</p>
+                </div>
+                <button
+                  onClick={() => handleGenerateAudio('chirp')}
+                  disabled={generatingAudio.chirp}
+                  className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {generatingAudio.chirp ? 'Generating...' : 'Generate'}
+                </button>
+              </div>
+              {voiceAudioUrls.chirp && (
+                <audio
+                  controls
+                  src={getFullAudioUrl(voiceAudioUrls.chirp)}
+                  className="w-full"
+                  style={{ height: '40px' }}
+                >
+                  Your browser does not support the audio element.
+                </audio>
+              )}
+              {!voiceAudioUrls.chirp && generatingAudio.chirp === false && (
+                <p className="text-xs text-gray-400 italic">Click Generate to create audio with this voice</p>
+              )}
+            </div>
+
+            {/* Neural2 Voice */}
+            <div className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-800">🥈 Neural2 Voice</h4>
+                  <p className="text-xs text-gray-500">High Quality - Excellent Prosody</p>
+                </div>
+                <button
+                  onClick={() => handleGenerateAudio('neural2')}
+                  disabled={generatingAudio.neural2}
+                  className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {generatingAudio.neural2 ? 'Generating...' : 'Generate'}
+                </button>
+              </div>
+              {voiceAudioUrls.neural2 && (
+                <audio
+                  controls
+                  src={getFullAudioUrl(voiceAudioUrls.neural2)}
+                  className="w-full"
+                  style={{ height: '40px' }}
+                >
+                  Your browser does not support the audio element.
+                </audio>
+              )}
+              {!voiceAudioUrls.neural2 && generatingAudio.neural2 === false && (
+                <p className="text-xs text-gray-400 italic">Click Generate to create audio with this voice</p>
+              )}
+            </div>
+
+            {/* WaveNet Voice */}
+            <div className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-800">🥉 WaveNet Voice</h4>
+                  <p className="text-xs text-gray-500">Premium Quality - Widely Available (Current Default)</p>
+                </div>
+                <button
+                  onClick={() => handleGenerateAudio('wavenet')}
+                  disabled={generatingAudio.wavenet}
+                  className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {generatingAudio.wavenet ? 'Generating...' : 'Generate'}
+                </button>
+              </div>
+              {(voiceAudioUrls.wavenet || currentArticle.audio_url) && (
+                <audio
+                  controls
+                  src={getFullAudioUrl(voiceAudioUrls.wavenet || currentArticle.audio_url || currentArticle.audio)}
+                  className="w-full"
+                  style={{ height: '40px' }}
+                >
+                  Your browser does not support the audio element.
+                </audio>
+              )}
+              {!voiceAudioUrls.wavenet && !currentArticle.audio_url && generatingAudio.wavenet === false && (
+                <p className="text-xs text-gray-400 italic">Click Generate to create audio with this voice</p>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-gray-200">
+            <p className="text-xs text-gray-500">
+              💡 <strong>Tip:</strong> Generate all three voices and compare them side by side. The current default audio uses WaveNet voice.
+            </p>
+          </div>
+        </div>
+      ) : null
+    ),
+    featured_image: (
+      <div className="bg-white rounded-lg shadow p-6">
+        <h3 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide flex items-center gap-2">
+          <FiImage size={16} />
+          Featured Image
+        </h3>
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleImageUpload}
+          accept="image/*"
+          className="hidden"
+        />
+        <MediaLibrary
+          isOpen={showMediaLibrary}
+          onClose={() => setShowMediaLibrary(false)}
+          onSelect={handleMediaSelect}
+        />
+        {currentArticle.featured_image_url ? (
+          <div className="space-y-3">
+            <img
+              src={currentArticle.featured_image_url}
+              alt="Featured"
+              className="w-full h-48 object-cover rounded-lg border border-gray-300"
+              onError={(e) => {
+                e.target.style.display = 'none'
+              }}
+            />
+            <button
+              type="button"
+              onClick={handleImageButtonClick}
+              disabled={uploadingImage}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {uploadingImage ? 'Uploading...' : 'Change Image'}
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={handleImageButtonClick}
+            disabled={uploadingImage}
+            className="w-full px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-600 hover:border-primary-500 hover:text-primary-600 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {uploadingImage ? 'Uploading...' : 'Set featured image'}
+          </button>
+        )}
+      </div>
+    ),
+    author: (
+      <div className="bg-white rounded-lg shadow p-6">
+        <h3 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide flex items-center gap-2">
+          <FiUser size={16} />
+          Author
+        </h3>
+        <input
+          type="text"
+          name="author"
+          value={currentArticle.author_name || 'admin'}
+          readOnly
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm text-gray-600"
+        />
+        <p className="mt-2 text-xs text-gray-500">Author cannot be changed</p>
+      </div>
+    ),
+    slug: (
+      <div className="bg-white rounded-lg shadow p-6">
+        <h3 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide flex items-center gap-2">
+          <FiLink size={16} />
+          Slug
+        </h3>
+        <input
+          type="text"
+          name="slug"
+          value={formData.slug}
+          onChange={handleChange}
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+          placeholder="article-slug"
+        />
+        <p className="mt-2 text-xs text-gray-500">The "slug" is the URL-friendly version of the name.</p>
+      </div>
+    ),
+    reference_link: (
+      currentArticle.source_url ? (
+        <div className="bg-white rounded-lg shadow p-6">
+          <h3 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide flex items-center gap-2">
+            <FiExternalLink size={16} />
+            Reference Link
+          </h3>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+              <a
+                href={currentArticle.source_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-blue-600 hover:text-blue-800 hover:underline flex-1 truncate"
+              >
+                {currentArticle.source_url}
+              </a>
+              <FiExternalLink size={14} className="text-gray-400 flex-shrink-0" />
+            </div>
+            <p className="text-xs text-gray-500">Original source URL for this article.</p>
+          </div>
+        </div>
+      ) : null
+    ),
+    source: (
+      <div className="bg-white rounded-lg shadow p-6">
+        <h3 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide flex items-center gap-2">
+          <FiTag size={16} />
+          Source
+        </h3>
+        <div className="space-y-2">
+          {categoryOptions.map((option) => (
+            <label key={option.value} className="flex items-center">
+              <input
+                type="radio"
+                name="category"
+                value={option.value}
+                checked={formData.category === option.value}
+                onChange={handleChange}
+                className="w-4 h-4 text-primary-600 focus:ring-primary-500"
+              />
+              <span className="ml-2 text-sm text-gray-700">{option.label}</span>
+            </label>
+          ))}
+        </div>
+        <p className="mt-3 text-xs text-gray-500">Article source type</p>
+      </div>
+    ),
+    categories: (
+      <div className="bg-white rounded-lg shadow p-6">
+        <h3 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide flex items-center gap-2">
+          <FiTag size={16} />
+          Content Categories
+        </h3>
+        <div className="space-y-2 max-h-64 overflow-y-auto">
+          {categoryTree.length === 0 ? (
+            <p className="text-sm text-gray-500">
+              No categories available.{' '}
+              <Link to="/categories" className="text-blue-600 hover:underline">
+                Create categories
+              </Link>
+            </p>
+          ) : (
+            categoryTree.map((parentCategory) => (
+              <div key={parentCategory.id} className="space-y-1">
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={formData.category_ids.includes(parentCategory.id)}
+                    onChange={(e) => {
+                      const newIds = e.target.checked
+                        ? [...formData.category_ids, parentCategory.id]
+                        : formData.category_ids.filter(id => id !== parentCategory.id)
+                      setFormData({ ...formData, category_ids: newIds })
+                    }}
+                    className="w-4 h-4 text-primary-600 focus:ring-primary-500"
+                  />
+                  <span className="ml-2 text-sm font-medium text-gray-900">
+                    {parentCategory.name}
+                  </span>
+                </label>
+                {parentCategory.children && parentCategory.children.length > 0 && (
+                  <div className="ml-6 space-y-1">
+                    {parentCategory.children.map((childCategory) => (
+                      <label key={childCategory.id} className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={formData.category_ids.includes(childCategory.id)}
+                          onChange={(e) => {
+                            const newIds = e.target.checked
+                              ? [...formData.category_ids, childCategory.id]
+                              : formData.category_ids.filter(id => id !== childCategory.id)
+                            setFormData({ ...formData, category_ids: newIds })
+                          }}
+                          className="w-4 h-4 text-primary-600 focus:ring-primary-500"
+                        />
+                        <span className="ml-2 text-sm text-gray-700">
+                          {childCategory.name}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+        <p className="mt-3 text-xs text-gray-500">
+          Select content categories (Cricket, Football, etc.)
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-7xl mx-auto">
       {/* Header with Publish/Draft buttons */}
       <div className="mb-6 flex justify-between items-center border-b border-gray-200 pb-4">
-    <div>
-        <h1 className="text-3xl font-bold text-gray-800">Edit Article</h1>
+        <div>
+          <h1 className="text-3xl font-bold text-gray-800">Edit Article</h1>
         </div>
         <div className="flex gap-3">
           <button
             onClick={handleSaveDraft}
             disabled={saving}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              formData.status === 'draft'
-                ? 'bg-gray-200 text-gray-700'
-                : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-            } disabled:opacity-50 disabled:cursor-not-allowed`}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${formData.status === 'draft'
+              ? 'bg-gray-200 text-gray-700'
+              : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
           >
             {saving ? 'Saving...' : 'Save Draft'}
           </button>
@@ -357,8 +789,8 @@ function ArticleEdit() {
             disabled={saving}
             className="px-6 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
           >
-            {saving 
-              ? (formData.status === 'published' ? 'Updating...' : 'Publishing...') 
+            {saving
+              ? (formData.status === 'published' ? 'Updating...' : 'Publishing...')
               : (formData.status === 'published' ? 'Update' : 'Publish')
             }
           </button>
@@ -394,16 +826,16 @@ function ArticleEdit() {
             <label className="block text-sm font-medium text-gray-700 mb-2">Content *</label>
             <div className="border border-gray-300 rounded-lg">
               <ReactQuill
-                  ref={quillRef}
-                  theme="snow"
-                  value={formData.body}
-                  onChange={handleBodyChange}
+                ref={quillRef}
+                theme="snow"
+                value={formData.body}
+                onChange={handleBodyChange}
                 modules={{
                   toolbar: [
                     [{ 'header': [1, 2, 3, false] }],
                     ['bold', 'italic', 'underline', 'strike'],
                     [{ 'color': [] }, { 'background': [] }],
-                    [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                    [{ 'list': 'ordered' }, { 'list': 'bullet' }],
                     [{ 'align': [] }],
                     ['link', 'image'],
                     ['clean'],
@@ -414,19 +846,19 @@ function ArticleEdit() {
                     matchers: []
                   }
                 }}
-                  formats={[
-                    'header',
-                    'bold', 'italic', 'underline', 'strike',
-                    'color', 'background',
-                    'list', 'bullet',
-                    'align',
-                    'link', 'image',
-                    'code-block'
-                  ]}
-                  style={{ height: '400px', marginBottom: '50px' }}
-                  placeholder="Write your article content here... (Paste YouTube or social media links to auto-embed)"
-                  className="text-sm"
-                />
+                formats={[
+                  'header',
+                  'bold', 'italic', 'underline', 'strike',
+                  'color', 'background',
+                  'list', 'bullet',
+                  'align',
+                  'link', 'image',
+                  'code-block'
+                ]}
+                style={{ height: '400px', marginBottom: '50px' }}
+                placeholder="Write your article content here... (Paste YouTube or social media links to auto-embed)"
+                className="text-sm"
+              />
             </div>
           </div>
 
@@ -512,359 +944,26 @@ function ArticleEdit() {
 
         {/* Right Sidebar */}
         <div className="space-y-6">
-          {/* Publish/Draft Status */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide">Status</h3>
-            <div className="space-y-2">
-              <label className="flex items-center">
-                <input
-                  type="radio"
-                  name="status"
-                  value="draft"
-                  checked={formData.status === 'draft'}
-                  onChange={() => handleStatusChange('draft')}
-                  className="w-4 h-4 text-primary-600 focus:ring-primary-500"
-                />
-                <span className="ml-2 text-sm text-gray-700">Draft</span>
-              </label>
-              <label className="flex items-center">
-                <input
-                  type="radio"
-                  name="status"
-                  value="published"
-                  checked={formData.status === 'published'}
-                  onChange={() => handleStatusChange('published')}
-                  className="w-4 h-4 text-primary-600 focus:ring-primary-500"
-                />
-                <span className="ml-2 text-sm text-gray-700">Published</span>
-              </label>
-            </div>
-            
-            {/* Published Date/Time */}
-            {formData.status === 'published' && (
-              <div className="mt-4 pt-4 border-t border-gray-200">
-                <label htmlFor="published_at" className="block text-sm font-medium text-gray-700 mb-2">
-                  Published Date & Time
-                </label>
-                <input
-                  type="datetime-local"
-                  id="published_at"
-                  name="published_at"
-                  value={formData.published_at || ''}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                />
-                <p className="mt-1 text-xs text-gray-500">
-                  Change when this article was/will be published
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Audio Comparison Section */}
-          {currentArticle.body && currentArticle.body.trim() && (
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide flex items-center gap-2">
-                <FiVolume2 size={16} />
-                Audio Comparison (Malayalam Voices)
-              </h3>
-              <p className="text-xs text-gray-500 mb-4">
-                Compare all three premium voices for news reading. Generate and play each voice to find the best one.
-              </p>
-              
-              <div className="space-y-4">
-                {/* Chirp Voice */}
-                <div className="border border-gray-200 rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div>
-                      <h4 className="text-sm font-semibold text-gray-800">🥇 Chirp Voice</h4>
-                      <p className="text-xs text-gray-500">Best Quality - Most Natural</p>
-                    </div>
-                    <button
-                      onClick={() => handleGenerateAudio('chirp')}
-                      disabled={generatingAudio.chirp}
-                      className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {generatingAudio.chirp ? 'Generating...' : 'Generate'}
-                    </button>
-                  </div>
-                  {voiceAudioUrls.chirp && (
-                    <audio
-                      controls
-                      src={getFullAudioUrl(voiceAudioUrls.chirp)}
-                      className="w-full"
-                      style={{ height: '40px' }}
-                    >
-                      Your browser does not support the audio element.
-                    </audio>
-                  )}
-                  {!voiceAudioUrls.chirp && generatingAudio.chirp === false && (
-                    <p className="text-xs text-gray-400 italic">Click Generate to create audio with this voice</p>
-                  )}
-                </div>
-
-                {/* Neural2 Voice */}
-                <div className="border border-gray-200 rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div>
-                      <h4 className="text-sm font-semibold text-gray-800">🥈 Neural2 Voice</h4>
-                      <p className="text-xs text-gray-500">High Quality - Excellent Prosody</p>
-                    </div>
-                    <button
-                      onClick={() => handleGenerateAudio('neural2')}
-                      disabled={generatingAudio.neural2}
-                      className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {generatingAudio.neural2 ? 'Generating...' : 'Generate'}
-                    </button>
-                  </div>
-                  {voiceAudioUrls.neural2 && (
-                    <audio
-                      controls
-                      src={getFullAudioUrl(voiceAudioUrls.neural2)}
-                      className="w-full"
-                      style={{ height: '40px' }}
-                    >
-                      Your browser does not support the audio element.
-                    </audio>
-                  )}
-                  {!voiceAudioUrls.neural2 && generatingAudio.neural2 === false && (
-                    <p className="text-xs text-gray-400 italic">Click Generate to create audio with this voice</p>
-                  )}
-                </div>
-
-                {/* WaveNet Voice */}
-                <div className="border border-gray-200 rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div>
-                      <h4 className="text-sm font-semibold text-gray-800">🥉 WaveNet Voice</h4>
-                      <p className="text-xs text-gray-500">Premium Quality - Widely Available (Current Default)</p>
-                    </div>
-                    <button
-                      onClick={() => handleGenerateAudio('wavenet')}
-                      disabled={generatingAudio.wavenet}
-                      className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {generatingAudio.wavenet ? 'Generating...' : 'Generate'}
-                    </button>
-                  </div>
-                  {(voiceAudioUrls.wavenet || currentArticle.audio_url) && (
-                    <audio
-                      controls
-                      src={getFullAudioUrl(voiceAudioUrls.wavenet || currentArticle.audio_url || currentArticle.audio)}
-                      className="w-full"
-                      style={{ height: '40px' }}
-                    >
-                      Your browser does not support the audio element.
-                    </audio>
-                  )}
-                  {!voiceAudioUrls.wavenet && !currentArticle.audio_url && generatingAudio.wavenet === false && (
-                    <p className="text-xs text-gray-400 italic">Click Generate to create audio with this voice</p>
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-4 pt-4 border-t border-gray-200">
-                <p className="text-xs text-gray-500">
-                  💡 <strong>Tip:</strong> Generate all three voices and compare them side by side. The current default audio uses WaveNet voice.
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Featured Image */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide flex items-center gap-2">
-              <FiImage size={16} />
-              Featured Image
-            </h3>
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleImageUpload}
-              accept="image/*"
-              className="hidden"
-            />
-            <MediaLibrary
-              isOpen={showMediaLibrary}
-              onClose={() => setShowMediaLibrary(false)}
-              onSelect={handleMediaSelect}
-            />
-            {currentArticle.featured_image_url ? (
-              <div className="space-y-3">
-                <img
-                  src={currentArticle.featured_image_url}
-                  alt="Featured"
-                  className="w-full h-48 object-cover rounded-lg border border-gray-300"
-                  onError={(e) => {
-                    e.target.style.display = 'none'
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={handleImageButtonClick}
-                  disabled={uploadingImage}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {uploadingImage ? 'Uploading...' : 'Change Image'}
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={handleImageButtonClick}
-                disabled={uploadingImage}
-                className="w-full px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-600 hover:border-primary-500 hover:text-primary-600 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {uploadingImage ? 'Uploading...' : 'Set featured image'}
-              </button>
-            )}
-          </div>
-
-          {/* Author */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide flex items-center gap-2">
-              <FiUser size={16} />
-              Author
-            </h3>
-            <input
-              type="text"
-              name="author"
-              value={currentArticle.author_name || 'admin'}
-              readOnly
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm text-gray-600"
-            />
-            <p className="mt-2 text-xs text-gray-500">Author cannot be changed</p>
-          </div>
-
-          {/* Slug */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide flex items-center gap-2">
-              <FiLink size={16} />
-              Slug
-            </h3>
-            <input
-              type="text"
-              name="slug"
-              value={formData.slug}
-              onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
-              placeholder="article-slug"
-            />
-            <p className="mt-2 text-xs text-gray-500">The "slug" is the URL-friendly version of the name.</p>
-          </div>
-
-          {/* Reference Link */}
-          {currentArticle.source_url && (
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide flex items-center gap-2">
-                <FiExternalLink size={16} />
-                Reference Link
-              </h3>
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                  <a
-                    href={currentArticle.source_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-blue-600 hover:text-blue-800 hover:underline flex-1 truncate"
-                  >
-              {currentArticle.source_url}
-            </a>
-                  <FiExternalLink size={14} className="text-gray-400 flex-shrink-0" />
-                </div>
-                <p className="text-xs text-gray-500">Original source URL for this article.</p>
-              </div>
-            </div>
-          )}
-
-          {/* Source Category (reliable_sources, trends, subscriptions) */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide flex items-center gap-2">
-              <FiTag size={16} />
-              Source
-            </h3>
-            <div className="space-y-2">
-              {categoryOptions.map((option) => (
-                <label key={option.value} className="flex items-center">
-                  <input
-                    type="radio"
-                    name="category"
-                    value={option.value}
-                    checked={formData.category === option.value}
-                    onChange={handleChange}
-                    className="w-4 h-4 text-primary-600 focus:ring-primary-500"
-                  />
-                  <span className="ml-2 text-sm text-gray-700">{option.label}</span>
-                </label>
-              ))}
-            </div>
-            <p className="mt-3 text-xs text-gray-500">Article source type</p>
-          </div>
-
-          {/* Content Categories (Cricket, Football, etc.) */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide flex items-center gap-2">
-              <FiTag size={16} />
-              Content Categories
-            </h3>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {categoryTree.length === 0 ? (
-                <p className="text-sm text-gray-500">
-                  No categories available.{' '}
-                  <Link to="/categories" className="text-blue-600 hover:underline">
-                    Create categories
-                  </Link>
-                </p>
-              ) : (
-                categoryTree.map((parentCategory) => (
-                  <div key={parentCategory.id} className="space-y-1">
-                    <label className="flex items-center">
-                      <input
-                        type="checkbox"
-                        checked={formData.category_ids.includes(parentCategory.id)}
-                        onChange={(e) => {
-                          const newIds = e.target.checked
-                            ? [...formData.category_ids, parentCategory.id]
-                            : formData.category_ids.filter(id => id !== parentCategory.id)
-                          setFormData({ ...formData, category_ids: newIds })
-                        }}
-                        className="w-4 h-4 text-primary-600 focus:ring-primary-500"
-                      />
-                      <span className="ml-2 text-sm font-medium text-gray-900">
-                        {parentCategory.name}
-                      </span>
-                    </label>
-                    {parentCategory.children && parentCategory.children.length > 0 && (
-                      <div className="ml-6 space-y-1">
-                        {parentCategory.children.map((childCategory) => (
-                          <label key={childCategory.id} className="flex items-center">
-                            <input
-                              type="checkbox"
-                              checked={formData.category_ids.includes(childCategory.id)}
-                              onChange={(e) => {
-                                const newIds = e.target.checked
-                                  ? [...formData.category_ids, childCategory.id]
-                                  : formData.category_ids.filter(id => id !== childCategory.id)
-                                setFormData({ ...formData, category_ids: newIds })
-                              }}
-                              className="w-4 h-4 text-primary-600 focus:ring-primary-500"
-                            />
-                            <span className="ml-2 text-sm text-gray-700">
-                              {childCategory.name}
-                            </span>
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-            <p className="mt-3 text-xs text-gray-500">
-              Select content categories (Cricket, Football, etc.)
-            </p>
-          </div>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={sidebarOrder}
+              strategy={verticalListSortingStrategy}
+            >
+              {sidebarOrder.map((id) => {
+                const component = sidebarComponents[id]
+                if (!component) return null
+                return (
+                  <SortableSidebarItem key={id} id={id}>
+                    {component}
+                  </SortableSidebarItem>
+                )
+              })}
+            </SortableContext>
+          </DndContext>
         </div>
       </div>
     </div>
