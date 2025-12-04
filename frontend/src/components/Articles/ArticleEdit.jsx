@@ -4,7 +4,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { fetchArticle, updateArticle, publishArticle } from '../../store/slices/articleSlice'
 import api from '../../services/api'
 import { fetchCategoryTree } from '../../store/slices/categorySlice'
-import { FiImage, FiUser, FiLink, FiTag, FiExternalLink, FiVolume2, FiDownload } from 'react-icons/fi'
+
 import MediaLibrary from '../MediaLibrary/MediaLibrary'
 import ReactQuill from 'react-quill'
 import 'react-quill/dist/quill.snow.css'
