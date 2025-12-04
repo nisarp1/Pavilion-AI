@@ -34,10 +34,11 @@ function SortableSidebarItem(props) {
       <div
         {...attributes}
         {...listeners}
-        className="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity z-10 bg-white rounded-full shadow-sm"
+        className="absolute top-2 right-2 p-2 text-gray-400 hover:text-primary-600 cursor-grab active:cursor-grabbing z-10 bg-white rounded-full shadow-sm border border-gray-100"
+        style={{ touchAction: 'none' }}
         title="Drag to reorder"
       >
-        <FiMove size={14} />
+        <FiMove size={16} />
       </div>
       {props.children}
     </div>
@@ -85,7 +86,11 @@ function ArticleEdit() {
   ])
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
