@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
-import { fetchArticles, fetchTrends, fetchAllFeeds, generateArticle, publishArticle, archiveArticle, updateArticle, clearError, addGeneratingId, removeGeneratingId, addPublishingId, removePublishingId } from '../../store/slices/articleSlice'
+import { fetchArticles, fetchTrends, fetchAllFeeds, generateArticle, publishArticle, archiveArticle, deleteArticle, updateArticle, clearError, addGeneratingId, removeGeneratingId, addPublishingId, removePublishingId } from '../../store/slices/articleSlice'
 import { fetchCategories } from '../../store/slices/categorySlice'
 import { format } from 'date-fns'
 import { FiEdit, FiPlay, FiCheck, FiArchive, FiRefreshCw, FiMoreVertical, FiEye, FiTrash2, FiClock, FiExternalLink, FiFilter } from 'react-icons/fi'
@@ -519,16 +519,20 @@ function ArticleList() {
             </button>
             <button
               onClick={async () => {
-                if (confirm(`Are you sure you want to move ${selectedArticles.size} article(s) to trash?`)) {
+                const isTrash = activeTab === 'archived'
+                const actionName = isTrash ? 'delete permanently' : 'move to trash'
+                const actionFunc = isTrash ? deleteArticle : archiveArticle
+
+                if (confirm(`Are you sure you want to ${actionName} ${selectedArticles.size} article(s)?`)) {
                   const ids = Array.from(selectedArticles)
-                  await Promise.all(ids.map(id => dispatch(archiveArticle(id))))
+                  await Promise.all(ids.map(id => dispatch(actionFunc(id))))
                   setSelectedArticles(new Set())
                   refreshList()
                 }
               }}
               className="px-3 py-1.5 text-sm bg-white border border-red-300 text-red-600 rounded hover:bg-red-50"
             >
-              Move to Trash
+              {activeTab === 'archived' ? 'Delete Permanently' : 'Move to Trash'}
             </button>
           </div>
         </div>

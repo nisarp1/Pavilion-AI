@@ -89,6 +89,18 @@ export const archiveArticle = createAsyncThunk(
   }
 )
 
+export const deleteArticle = createAsyncThunk(
+  'articles/deleteArticle',
+  async (articleId, { rejectWithValue }) => {
+    try {
+      await api.delete(`/articles/${articleId}/`)
+      return { id: articleId }
+    } catch (error) {
+      return rejectWithValue(error.response?.data || error.message)
+    }
+  }
+)
+
 export const fetchTrends = createAsyncThunk(
   'articles/fetchTrends',
   async (_, { rejectWithValue }) => {
@@ -229,6 +241,12 @@ const articleSlice = createSlice({
         }
         if (state.currentArticle?.id === action.payload.id) {
           state.currentArticle = action.payload
+        }
+      })
+      .addCase(deleteArticle.fulfilled, (state, action) => {
+        state.items = state.items.filter((item) => item.id !== action.payload.id)
+        if (state.currentArticle?.id === action.payload.id) {
+          state.currentArticle = null
         }
       })
       .addCase(bulkUpdateArticles.pending, (state) => {
