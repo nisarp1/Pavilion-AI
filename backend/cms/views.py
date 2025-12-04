@@ -57,6 +57,9 @@ class ArticleViewSet(viewsets.ModelViewSet):
         
         if status_filter:
             queryset = queryset.filter(status=status_filter)
+        else:
+            # By default, exclude archived articles
+            queryset = queryset.exclude(status='archived')
         
         if category_filter:
             # Try to filter by categories (many-to-many) using slug first
