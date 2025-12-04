@@ -35,8 +35,7 @@ function MediaLibrary({ isOpen, onClose, onSelect }) {
     }
   }
 
-  const handleUpload = async (e) => {
-    const files = Array.from(e.target.files || [])
+  const uploadFiles = async (files) => {
     if (files.length === 0) return
 
     setUploading(true)
@@ -52,18 +51,51 @@ function MediaLibrary({ isOpen, onClose, onSelect }) {
       await fetchMedia()
     } catch (error) {
       console.error('Error uploading media:', error)
-      const errorMessage = error.response?.data?.detail || 
-                          error.response?.data?.file?.[0] || 
-                          error.message || 
-                          'Failed to upload image(s). Please try again.'
+      const errorMessage = error.response?.data?.detail ||
+        error.response?.data?.file?.[0] ||
+        error.message ||
+        'Failed to upload image(s). Please try again.'
       alert(`Upload failed: ${errorMessage}`)
     } finally {
       setUploading(false)
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''
-      }
     }
   }
+
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files || [])
+    uploadFiles(files)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  // Handle paste events
+  useEffect(() => {
+    const handlePaste = (e) => {
+      if (!isOpen) return
+
+      const items = e.clipboardData?.items
+      if (!items) return
+
+      const files = []
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          const file = items[i].getAsFile()
+          if (file) files.push(file)
+        }
+      }
+
+      if (files.length > 0) {
+        e.preventDefault()
+        uploadFiles(files)
+      }
+    }
+
+    if (isOpen) {
+      window.addEventListener('paste', handlePaste)
+    }
+    return () => window.removeEventListener('paste', handlePaste)
+  }, [isOpen])
 
   const handleSelect = (mediaItem) => {
     setSelectedMedia(mediaItem)
@@ -81,11 +113,11 @@ function MediaLibrary({ isOpen, onClose, onSelect }) {
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       {/* Backdrop */}
-      <div 
+      <div
         className="fixed inset-0 bg-black bg-opacity-50"
         onClick={onClose}
       />
-      
+
       {/* Modal */}
       <div className="flex items-center justify-center min-h-screen p-4">
         <div className="relative bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col">
@@ -120,14 +152,15 @@ function MediaLibrary({ isOpen, onClose, onSelect }) {
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
                 className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="Upload or Paste (Ctrl+V) images"
               >
                 <FiUpload size={18} />
-                {uploading ? 'Uploading...' : 'Upload Images'}
+                {uploading ? 'Uploading...' : 'Upload or Paste Images'}
               </button>
               <input
                 type="file"
                 ref={fileInputRef}
-                onChange={handleUpload}
+                onChange={handleFileSelect}
                 accept="image/*"
                 multiple
                 className="hidden"
@@ -158,11 +191,10 @@ function MediaLibrary({ isOpen, onClose, onSelect }) {
                   <div
                     key={item.id}
                     onClick={() => handleSelect(item)}
-                    className={`relative group cursor-pointer border-2 rounded-lg overflow-hidden transition-all ${
-                      selectedMedia?.id === item.id
+                    className={`relative group cursor-pointer border-2 rounded-lg overflow-hidden transition-all ${selectedMedia?.id === item.id
                         ? 'border-primary-600 ring-2 ring-primary-200'
                         : 'border-gray-200 hover:border-primary-300'
-                    }`}
+                      }`}
                   >
                     <div className="aspect-square bg-gray-100">
                       <img
