@@ -370,6 +370,7 @@ REQUIRED OUTPUT FORMAT (provide as JSON):
     "summary_malayalam": "Malayalam summary (2-3 sentences, professional editorial tone)",
     "summary_english": "English summary (2-3 sentences)",
     "body_malayalam": "Full article body in Malayalam (4-5 paragraphs in HTML format with <p> tags)",
+    "instagram_reel_script": "Thoughtful and engaging Instagram Reel script (voiceover type) in Malayalam. Conversational, engaging, and summarizes the key points. Approx 30-60 seconds when read aloud.",
     "meta_title": "SEO meta title in Malayalam (60-70 characters)",
     "meta_description": "SEO meta description in Malayalam (150-160 characters)",
     "og_title": "OG title in Malayalam (60-70 characters)",
@@ -382,6 +383,13 @@ BODY REQUIREMENTS:
 - Professional editorial tone - like a quality Malayalam news editorial
 - Engaging introduction, detailed body paragraphs, and strong conclusion
 - Localized yet authentic Malayalam - should read like original Malayalam journalism, not translation
+
+REEL SCRIPT REQUIREMENTS:
+- Engaging, conversational tone suitable for social media
+- Hook the viewer in the first 3 seconds
+- Summarize the main story quickly and interestingly
+- End with a call to action (e.g., "Read more strictly on our website")
+- Write it as a script for a voiceover artist
 
 Return the JSON response with all fields filled."""
 
@@ -449,6 +457,7 @@ Return the JSON response with all fields filled."""
                         'summary_malayalam': content_data.get('summary_malayalam', ''),
                         'summary_english': content_data.get('summary_english', ''),
                         'body_malayalam': content_data.get('body_malayalam', ''),
+                        'instagram_reel_script': content_data.get('instagram_reel_script', ''),
                         'meta_title': content_data.get('meta_title', ''),
                         'meta_description': content_data.get('meta_description', ''),
                         'og_title': content_data.get('og_title', ''),
@@ -850,6 +859,7 @@ def _generate_article_task_impl(article_id):
                 article.summary = generated_content.get('summary_malayalam', article.summary)
                 article.summary_english = generated_content.get('summary_english', '')
                 article.body = generated_content.get('body_malayalam', '')
+                article.instagram_reel_script = generated_content.get('instagram_reel_script', '')
                 article.meta_title = generated_content.get('meta_title', '')
                 article.meta_description = generated_content.get('meta_description', '')
                 article.og_title = generated_content.get('og_title', '')
@@ -935,6 +945,90 @@ def _generate_article_task_impl(article_id):
             'success': False,
             'error': str(e)
         }
+
+
+def generate_instagram_reel_audio(article, voice_name='chirp'):
+    """
+    Generate audio for Instagram Reel script using Google Cloud Text-to-Speech.
+    
+    Args:
+        article: Article instance with instagram_reel_script
+        voice_name: Voice name to use
+    
+    Returns:
+        bool: True if audio was generated successfully, False otherwise
+    """
+    if not TTS_AVAILABLE:
+        logger.warning("Google Cloud Text-to-Speech not available. Skipping reel audio generation.")
+        return False
+    
+    if not article.instagram_reel_script or not article.instagram_reel_script.strip():
+        logger.warning(f"Article {article.id} has no reel script. Skipping audio generation.")
+        return False
+        
+    try:
+        logger.info(f"Starting reel audio generation for article {article.id} with voice: {voice_name}")
+        
+        client = texttospeech.TextToSpeechClient()
+        text_content = article.instagram_reel_script.strip()
+        
+        # Map voice names (reuse mapping logic from generate_audio_for_article if possible or duplicate)
+        voice_mapping = {
+            'chirp': 'ml-IN-Chirp3-HD-Despina',
+            'neural2': 'ml-IN-Neural2-A',
+            'wavenet': 'ml-IN-Wavenet-A',
+            'karthika': 'ml-IN-Wavenet-A',
+            'best': 'ml-IN-Chirp3-HD-Despina',
+            'premium': 'ml-IN-Neural2-A',
+        }
+        actual_voice_name = voice_mapping.get(voice_name.lower(), voice_name)
+        
+        # Audio config - optimize for social media (louder effectively)
+        audio_config = texttospeech.AudioConfig(
+            audio_encoding=texttospeech.AudioEncoding.MP3,
+            speaking_rate=1.1, # Slightly faster for reels
+            pitch=1.0,
+            volume_gain_db=4.0, # Louder for social media
+            effects_profile_id=['headphone-class-device'],
+        )
+        
+        # SSML
+        escaped_text = html.escape(text_content)
+        ssml_text = f"""<speak>
+            <prosody rate="1.1" pitch="+1st">
+                {escaped_text}
+            </prosody>
+        </speak>"""
+        
+        synthesis_input = texttospeech.SynthesisInput(ssml=ssml_text)
+        
+        voice = texttospeech.VoiceSelectionParams(
+            language_code='ml-IN',
+            name=actual_voice_name,
+        )
+        
+        response = client.synthesize_speech(
+            input=synthesis_input,
+            voice=voice,
+            audio_config=audio_config
+        )
+        
+        # Save audio
+        voice_short_name = actual_voice_name.split('-')[-1] if '-' in actual_voice_name else actual_voice_name
+        audio_filename = f'reel_{article.id}_audio.mp3'
+        
+        article.instagram_reel_audio.save(
+            audio_filename,
+            ContentFile(response.audio_content),
+            save=True
+        )
+        
+        logger.info(f"Reel audio generated successfully for article {article.id}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error generating reel audio for article {article.id}: {str(e)}")
+        return False
 
 
 @shared_task

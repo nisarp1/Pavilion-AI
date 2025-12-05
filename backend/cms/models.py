@@ -286,6 +286,15 @@ class Article(models.Model):
         blank=True,
         help_text='Generated audio version of the article'
     )
+
+    # Instagram Reel
+    instagram_reel_script = models.TextField(blank=True, help_text="Script for Instagram Reel")
+    instagram_reel_audio = models.FileField(
+        upload_to='articles/reels/',
+        null=True,
+        blank=True,
+        help_text='Generated audio for Instagram Reel'
+    )
     
     # SEO/OG Data
     meta_title = models.CharField(max_length=255, blank=True)

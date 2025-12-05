@@ -201,6 +201,55 @@ class ArticleViewSet(viewsets.ModelViewSet):
             return Response({
                 'error': f'Audio generation error: {str(e)}'
             }, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'])
+    def generate_reel_audio(self, request, pk=None):
+        """
+        Generate audio for an article's reel script.
+        Expected payload: {
+            "voice_name": "chirp" | "neural2" | "wavenet"
+        }
+        """
+        article = self.get_object()
+        
+        if not article.instagram_reel_script or not article.instagram_reel_script.strip():
+            return Response(
+                {'error': 'Article must have reel script to generate reel audio.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        voice_name = request.data.get('voice_name', 'chirp')
+        
+        try:
+            from workers.tasks import generate_instagram_reel_audio
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            logger.info(f"Generating reel audio for article {article.id} with voice: {voice_name}")
+            result = generate_instagram_reel_audio(article, voice_name=voice_name)
+            
+            if result:
+                article.refresh_from_db()
+                serializer = self.get_serializer(article)
+                return Response({
+                    'message': f'Reel audio generated successfully with voice: {voice_name}',
+                    'article': serializer.data,
+                    # Assuming serializer will include the new field automatically or I need to handle it?
+                    # The serializer likely uses `fields = '__all__'` or similar.
+                    'reel_audio_url': article.instagram_reel_audio.url if article.instagram_reel_audio else None
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response(
+                    {'error': 'Reel audio generation failed. Check logs for details.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error generating reel audio: {str(e)}", exc_info=True)
+            return Response({
+                'error': f'Reel audio generation error: {str(e)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
     
     @action(detail=False, methods=['get'])
     def check_available_voices(self, request):
