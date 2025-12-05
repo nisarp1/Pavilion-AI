@@ -168,7 +168,7 @@ function ArticleEdit() {
           publishedAt = `${year}-${month}-${day}T${hours}:${minutes}`
         }
 
-        setFormData({
+        const newFormData = {
           title: currentArticle.title || '',
           slug: currentArticle.slug || '',
           summary: currentArticle.summary || '',
@@ -187,23 +187,8 @@ function ArticleEdit() {
           published_at: publishedAt,
         }
 
-        // Only update state if the new form data is different from the current state
-        // This prevents unnecessary re-renders and potential input focus loss
-        const hasMeaningfulChanges = Object.keys(newFormData).some(key => {
-          // Special handling for category_ids array comparison
-          if (key === 'category_ids') {
-            const currentIds = formData.category_ids || [];
-            const newIds = newFormData.category_ids || [];
-            if (currentIds.length !== newIds.length) return true;
-            return !currentIds.every(id => newIds.includes(id));
-          }
-          return newFormData[key] !== formData[key];
-        });
-
-        if (hasMeaningfulChanges) {
-          setFormData(newFormData)
-        }
-
+        // Always set data on first load to ensure we have the correct base state
+        setFormData(newFormData)
         initializedArticleId.current = currentArticle.id
       }
       // 2. If it's a background update (polling), ONLY update specific fields if they are missing
