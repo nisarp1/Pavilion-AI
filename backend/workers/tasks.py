@@ -357,11 +357,7 @@ def generate_article_with_gemini(article, mode='core'):
         original_summary = article.summary if article.summary and article.summary.strip() else "No summary provided"
         
         # Main prompt for generating complete Malayalam article
-        # Construct prompt based on mode
-        prompt = ""
-        
-        if mode == 'core' or mode == 'full':
-            prompt += f"""You are a professional Malayalam content writer and editor for a news/editorial website. Based on the following English article information, create a complete, localized Malayalam article.
+        prompt = f"""You are a professional Malayalam content writer and editor for a news/editorial website. Based on the following English article information, create a complete, localized Malayalam article.
 
 ORIGINAL ENGLISH TITLE: {original_title}
 
@@ -381,43 +377,7 @@ REQUIRED OUTPUT FORMAT (provide as JSON):
     "title_malayalam": "Malayalam title (professional, editorial style)",
     "summary_malayalam": "Malayalam summary (2-3 sentences, professional editorial tone)",
     "summary_english": "English summary (2-3 sentences)",
-    "body_malayalam": "Full article body in Malayalam (4-5 paragraphs in HTML format with <p> tags)"
-"""
-            if mode == 'full':
-                prompt += """,
-    "instagram_reel_script": "Thoughtful and engaging Instagram Reel script (voiceover type) in Malayalam. Conversational, engaging, and summarizes the key points. Approx 30-60 seconds when read aloud.",
-    "social_media_poster_text": "Short, punchy Malayalam text for a poster image (2-5 words, very catchy)",
-    "social_media_caption": "Engaging Malayalam caption for social media (Facebook/Instagram) with relevant hashtags",
-    "meta_title": "SEO meta title in Malayalam (60-70 characters)",
-    "meta_description": "SEO meta description in Malayalam (150-160 characters)",
-    "og_title": "OG title in Malayalam (60-70 characters)",
-    "og_description": "OG description in Malayalam (200 characters max)"
-"""
-            prompt += """
-}
-
-BODY REQUIREMENTS:
-- Write 4-5 substantial paragraphs (each 3-5 sentences)
-- Use HTML format with <p> tags only (no headings unless absolutely necessary)
-- Professional editorial tone - like a quality Malayalam news editorial
-- Engaging introduction, detailed body paragraphs, and strong conclusion
-- Localized yet authentic Malayalam - should read like original Malayalam journalism, not translation
-"""
-
-        elif mode == 'extras':
-            # Use existing Malayalam content for better context if available
-            malayalam_title = article.title if article.title != original_title else ""
-            malayalam_summary = article.summary
-            
-            prompt += f"""You are an SEO and Social Media expert for a Malayalam news website.
-Based on the following article content, generate engagement-focused social media content and SEO metadata.
-
-ENGLISH TITLE: {original_title}
-MALAYALAM TITLE: {malayalam_title}
-MALAYALAM SUMMARY: {malayalam_summary}
-
-REQUIRED OUTPUT FORMAT (provide as JSON):
-{{
+    "body_malayalam": "Full article body in Malayalam (4-5 paragraphs in HTML format with <p> tags)",
     "instagram_reel_script": "Thoughtful and engaging Instagram Reel script (voiceover type) in Malayalam. Conversational, engaging, and summarizes the key points. Approx 30-60 seconds when read aloud.",
     "social_media_poster_text": "Short, punchy Malayalam text for a poster image (2-5 words, very catchy)",
     "social_media_caption": "Engaging Malayalam caption for social media (Facebook/Instagram) with relevant hashtags",
@@ -427,12 +387,18 @@ REQUIRED OUTPUT FORMAT (provide as JSON):
     "og_description": "OG description in Malayalam (200 characters max)"
 }}
 
+BODY REQUIREMENTS:
+- Write 4-5 substantial paragraphs (each 3-5 sentences)
+- Use HTML format with <p> tags only (no headings unless absolutely necessary)
+- Professional editorial tone - like a quality Malayalam news editorial
+- Engaging introduction, detailed body paragraphs, and strong conclusion
+- Localized yet authentic Malayalam - should read like original Malayalam journalism, not translation
+
 REEL SCRIPT REQUIREMENTS:
 - Engaging, conversational tone suitable for social media
 - Hook the viewer in the first 3 seconds
 - Summarize the main story quickly and interestingly
 - End with a call to action (e.g., "Read more strictly on our website")
-- Write it as a script for a voiceover artist
 """
 
         prompt += "\nReturn the JSON response with all fields filled."
@@ -895,12 +861,8 @@ def _generate_article_task_impl(article_id):
         
         # Generate complete Malayalam content using Gemini AI
         logger.info(f"Starting Gemini generation for article {article_id}")
-        # Check if we should generate full content or active content
-        # For now, default to 'core' to speed up processing as requested
-        # 'extras' will be generated when user opens the edit page
-        
-        logger.info(f"Starting Gemini generation for article {article_id} (CORE content only)")
-        generated_content = generate_article_with_gemini(article, mode='core')
+        # Generate full content in one go (legacy mode restored)
+        generated_content = generate_article_with_gemini(article)
         
         if generated_content and isinstance(generated_content, dict):
             # Verify we have at least body content

@@ -156,67 +156,6 @@ class ArticleViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @action(detail=True, methods=['post'])
-    def generate_extras(self, request, pk=None):
-        """
-        Generate extra content (SEO, Reel script, Social posts) for an article.
-        Designed to be called when opening the edit page to save API costs on initial generation.
-        """
-        article = self.get_object()
-        
-        # Check if already generated
-        if article.instagram_reel_script and article.meta_description:
-            return Response({
-                'message': 'Extras already generated', 
-                'article': self.get_serializer(article).data
-            })
-            
-        import threading
-        
-        def run_extras_generation(article_id):
-            # Close connection before starting thread job
-            from django.db import close_old_connections
-            close_old_connections()
-            
-            try:
-                from workers.tasks import generate_article_with_gemini
-                import logging
-                logger = logging.getLogger(__name__)
-                
-                # Fetch fresh article instance
-                article_obj = Article.objects.get(id=article_id)
-                
-                logger.info(f"Generating extras for article {article_id}")
-                generated_content = generate_article_with_gemini(article_obj, mode='extras')
-                
-                if generated_content:
-                    # Update fields
-                    article_obj.instagram_reel_script = generated_content.get('instagram_reel_script', '')
-                    article_obj.social_media_poster_text = generated_content.get('social_media_poster_text', '')
-                    article_obj.social_media_caption = generated_content.get('social_media_caption', '')
-                    article_obj.meta_title = generated_content.get('meta_title', '')
-                    article_obj.meta_description = generated_content.get('meta_description', '')
-                    article_obj.og_title = generated_content.get('og_title', '')
-                    article_obj.og_description = generated_content.get('og_description', '')
-                    article_obj.save()
-                    logger.info(f"Extras generated and saved for article {article_id}")
-            except Exception as e:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error(f"Error generating extras: {str(e)}", exc_info=True)
-            finally:
-                close_old_connections()
-
-        # Run in background thread so UI doesn't block
-        thread = threading.Thread(target=run_extras_generation, args=(article.id,))
-        thread.daemon = True
-        thread.start()
-        
-        return Response({
-            'message': 'Extras generation started in background',
-            'status': 'generating_extras'
-        }, status=status.HTTP_202_ACCEPTED)
-
-    @action(detail=True, methods=['post'])
     def generate_audio(self, request, pk=None):
         """
         Generate audio for an article with a specific voice.
