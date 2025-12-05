@@ -185,7 +185,24 @@ function ArticleEdit() {
           og_title: currentArticle.og_title || '',
           og_description: currentArticle.og_description || '',
           published_at: publishedAt,
-        })
+        }
+
+        // Only update state if the new form data is different from the current state
+        // This prevents unnecessary re-renders and potential input focus loss
+        const hasMeaningfulChanges = Object.keys(newFormData).some(key => {
+          // Special handling for category_ids array comparison
+          if (key === 'category_ids') {
+            const currentIds = formData.category_ids || [];
+            const newIds = newFormData.category_ids || [];
+            if (currentIds.length !== newIds.length) return true;
+            return !currentIds.every(id => newIds.includes(id));
+          }
+          return newFormData[key] !== formData[key];
+        });
+
+        if (hasMeaningfulChanges) {
+          setFormData(newFormData)
+        }
 
         initializedArticleId.current = currentArticle.id
       }
