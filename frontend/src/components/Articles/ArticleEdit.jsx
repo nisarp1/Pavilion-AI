@@ -176,31 +176,9 @@ function ArticleEdit() {
         setFormData(newFormData)
         initializedArticleId.current = currentArticle.id
       }
-      // 2. If it's a background update (polling), ONLY update specific fields if they are missing
-      else {
-        setFormData(prev => {
-          const newData = { ...prev }
-          let hasChanges = false
-
-          // Helper to update only if previously empty and now has value
-          const updateIfMissing = (field) => {
-            if (!prev[field] && currentArticle[field]) {
-              newData[field] = currentArticle[field]
-              hasChanges = true
-            }
-          }
-
-          updateIfMissing('instagram_reel_script')
-          updateIfMissing('social_media_poster_text')
-          updateIfMissing('social_media_caption')
-          updateIfMissing('meta_title')
-          updateIfMissing('meta_description')
-          updateIfMissing('og_title')
-          updateIfMissing('og_description')
-
-          return hasChanges ? newData : prev
-        })
-      }
+      // 2. We no longer perform live background updates to prevent editor reloading
+      // The extra fields (SEO, Social, etc) generated in the background will continue
+      // but will only be visible if the user refreshes manually or on next load.
     }
   }, [currentArticle])
 
