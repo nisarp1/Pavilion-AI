@@ -45,6 +45,14 @@ function ArticleList() {
     }
   }, [generatingIds]) // Only run when array reference changes
 
+  // Track component mount status to stop polling on unmount
+  const isMounted = useRef(true)
+  useEffect(() => {
+    return () => {
+      isMounted.current = false
+    }
+  }, [])
+
   const pollForCompletion = async (articleId) => {
     // Prevent duplicate polling
     if (activePolls.current.has(articleId)) return
@@ -55,7 +63,8 @@ function ArticleList() {
     let polling = true
 
     const checkStatus = async () => {
-      if (!polling || !activePolls.current.has(articleId)) return
+      // Stop if unmounted or stopped
+      if (!isMounted.current || !polling || !activePolls.current.has(articleId)) return
 
       attempts++
       try {
@@ -68,7 +77,7 @@ function ArticleList() {
             polling = false
             activePolls.current.delete(articleId)
             dispatch(removeGeneratingId(articleId))
-            refreshList()
+            if (isMounted.current) refreshList()
             // Ensure we update the UI immediately
             return
           }
@@ -81,7 +90,7 @@ function ArticleList() {
         polling = false
         activePolls.current.delete(articleId)
         dispatch(removeGeneratingId(articleId))
-      } else if (polling) {
+      } else if (polling && isMounted.current) {
         // Schedule next poll only after current one finishes
         setTimeout(checkStatus, 2000)
       }
@@ -89,8 +98,6 @@ function ArticleList() {
 
     // Start polling
     checkStatus()
-
-    // Cleanup function not strictly possible with closure, but we handle it via activePolls check
   }
 
   useEffect(() => {
