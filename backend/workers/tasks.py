@@ -972,7 +972,7 @@ def generate_instagram_reel_audio(article, voice_name='chirp'):
         client = texttospeech.TextToSpeechClient()
         text_content = article.instagram_reel_script.strip()
         
-        # Map voice names (reuse mapping logic from generate_audio_for_article if possible or duplicate)
+        # Map voice names
         voice_mapping = {
             'chirp': 'ml-IN-Chirp3-HD-Despina',
             'neural2': 'ml-IN-Neural2-A',
@@ -981,8 +981,29 @@ def generate_instagram_reel_audio(article, voice_name='chirp'):
             'best': 'ml-IN-Chirp3-HD-Despina',
             'premium': 'ml-IN-Neural2-A',
         }
-        actual_voice_name = voice_mapping.get(voice_name.lower(), voice_name)
-        
+
+        # Build smart fallback chain based on requested voice
+        if voice_name.lower() in ['chirp', 'best']:
+            voice_fallback_chain = [
+                'ml-IN-Chirp3-HD-Despina',
+                'ml-IN-Neural2-A',
+                'ml-IN-Wavenet-A',
+                'ml-IN-Standard-A',
+            ]
+        elif voice_name.lower() in ['neural2', 'premium']:
+            voice_fallback_chain = [
+                'ml-IN-Neural2-A',
+                'ml-IN-Wavenet-A',
+                'ml-IN-Standard-A',
+            ]
+        else:
+            voice_name_default = voice_mapping.get(voice_name.lower(), voice_name)
+            voice_fallback_chain = [
+                voice_name_default,
+                'ml-IN-Wavenet-A',
+                'ml-IN-Standard-A',
+            ]
+
         # Audio config - optimize for social media (louder effectively)
         audio_config = texttospeech.AudioConfig(
             audio_encoding=texttospeech.AudioEncoding.MP3,
@@ -1002,20 +1023,43 @@ def generate_instagram_reel_audio(article, voice_name='chirp'):
         
         synthesis_input = texttospeech.SynthesisInput(ssml=ssml_text)
         
-        voice = texttospeech.VoiceSelectionParams(
-            language_code='ml-IN',
-            name=actual_voice_name,
-        )
+        # Try voices in fallback order until one works
+        response = None
+        last_error = None
+        used_voice_name = None
         
-        response = client.synthesize_speech(
-            input=synthesis_input,
-            voice=voice,
-            audio_config=audio_config
-        )
+        for attempt_voice in voice_fallback_chain:
+            try:
+                logger.info(f"Attempting reel generation with voice: {attempt_voice}")
+                
+                voice = texttospeech.VoiceSelectionParams(
+                    language_code='ml-IN',
+                    name=attempt_voice,
+                )
+                
+                response = client.synthesize_speech(
+                    input=synthesis_input,
+                    voice=voice,
+                    audio_config=audio_config
+                )
+                
+                # If we get here, it worked
+                used_voice_name = attempt_voice
+                logger.info(f"Successfully generated reel audio with voice: {attempt_voice}")
+                break
+                
+            except Exception as inner_e:
+                last_error = inner_e
+                logger.warning(f"Failed to generate reel audio with voice {attempt_voice}: {str(inner_e)}")
+                continue
+                
+        if not response:
+            logger.error(f"All voice attempts failed for reel audio. Last error: {str(last_error)}")
+            return False
         
         # Save audio
-        voice_short_name = actual_voice_name.split('-')[-1] if '-' in actual_voice_name else actual_voice_name
-        audio_filename = f'reel_{article.id}_audio.mp3'
+        voice_short_name = used_voice_name.split('-')[-1] if '-' in used_voice_name else used_voice_name
+        audio_filename = f'reel_{article.id}_audio_{voice_short_name.lower()}.mp3'
         
         article.instagram_reel_audio.save(
             audio_filename,
@@ -1023,7 +1067,7 @@ def generate_instagram_reel_audio(article, voice_name='chirp'):
             save=True
         )
         
-        logger.info(f"Reel audio generated successfully for article {article.id}")
+        logger.info(f"Reel audio saved to {audio_filename}")
         return True
         
     except Exception as e:
