@@ -128,8 +128,22 @@ function ArticleEdit() {
     dispatch(fetchArticle(id))
     dispatch(fetchCategoryTree())
     // Trigger extras generation (SEO, Social, Reel) when opening edit page
-    // The backend will check if it's already generated and skip if so
     dispatch(generateArticleExtras(id))
+
+    // Optional: Poll for updates every 4 seconds to catch when extras are ready
+    // This provides a "live" update feel without needing a manual refresh
+    const checkInterval = setInterval(() => {
+      dispatch(fetchArticle(id)).then((action) => {
+        const article = action.payload;
+        // Stop polling if we see the extras are populated
+        if (article && article.instagram_reel_script && article.meta_description) {
+          clearInterval(checkInterval);
+        }
+      });
+    }, 4000);
+
+    return () => clearInterval(checkInterval);
+
   }, [dispatch, id])
 
   useEffect(() => {
