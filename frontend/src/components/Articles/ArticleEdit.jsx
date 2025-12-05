@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { fetchArticle, updateArticle, publishArticle } from '../../store/slices/articleSlice'
+import { fetchArticle, updateArticle, publishArticle, generateArticleExtras } from '../../store/slices/articleSlice'
 import api from '../../services/api'
 import { fetchCategoryTree } from '../../store/slices/categorySlice'
 
@@ -127,6 +127,9 @@ function ArticleEdit() {
   useEffect(() => {
     dispatch(fetchArticle(id))
     dispatch(fetchCategoryTree())
+    // Trigger extras generation (SEO, Social, Reel) when opening edit page
+    // The backend will check if it's already generated and skip if so
+    dispatch(generateArticleExtras(id))
   }, [dispatch, id])
 
   useEffect(() => {

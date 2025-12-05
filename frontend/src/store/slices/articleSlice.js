@@ -66,6 +66,18 @@ export const generateArticle = createAsyncThunk(
   }
 )
 
+export const generateArticleExtras = createAsyncThunk(
+  'articles/generateArticleExtras',
+  async (articleId, { rejectWithValue }) => {
+    try {
+      const response = await api.post(`/articles/${articleId}/generate_extras/`)
+      return response.data
+    } catch (error) {
+      return rejectWithValue(error.response?.data || error.message)
+    }
+  }
+)
+
 export const publishArticle = createAsyncThunk(
   'articles/publishArticle',
   async (articleId, { rejectWithValue }) => {
