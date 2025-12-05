@@ -10,6 +10,8 @@ function ArticleForm({ initialData, onSubmit, saving, submitLabel }) {
     title: initialData.title || '',
     summary: initialData.summary || '',
     body: initialData.body || '',
+    social_media_poster_text: initialData.social_media_poster_text || '',
+    social_media_caption: initialData.social_media_caption || '',
     meta_title: initialData.meta_title || '',
     meta_description: initialData.meta_description || '',
     og_title: initialData.og_title || '',
@@ -22,6 +24,8 @@ function ArticleForm({ initialData, onSubmit, saving, submitLabel }) {
         title: initialData.title || '',
         summary: initialData.summary || '',
         body: initialData.body || '',
+        social_media_poster_text: initialData.social_media_poster_text || '',
+        social_media_caption: initialData.social_media_caption || '',
         meta_title: initialData.meta_title || '',
         meta_description: initialData.meta_description || '',
         og_title: initialData.og_title || '',
@@ -35,65 +39,65 @@ function ArticleForm({ initialData, onSubmit, saving, submitLabel }) {
   useEffect(() => {
     let handlePaste = null
     let timer = null
-    
+
     try {
       // Wait for editor to be ready
       timer = setTimeout(() => {
         try {
           if (!quillRef.current) return
-          
+
           const quill = quillRef.current.getEditor()
           if (!quill || !quill.root) return
-          
+
           handlePaste = async (e) => {
             const clipboardData = e.clipboardData || window.clipboardData
             if (!clipboardData) return
-            
+
             const text = clipboardData.getData('text/plain')
             if (!text) return
-            
+
             const trimmedText = text.trim()
-            
+
             // Check if it's a pure URL (exactly matches URL pattern)
             const urlRegex = /^(https?:\/\/[^\s]+)$/i
             if (!urlRegex.test(trimmedText)) return
-            
+
             const url = trimmedText
-            
+
             // Check if it's an embeddable URL
             if (!/youtube\.com|youtu\.be|twitter\.com|x\.com|instagram\.com|facebook\.com/i.test(url)) {
               return
             }
-            
+
             // Convert URL to embed HTML
             const embedHtml = convertUrlToEmbed(url)
             if (!embedHtml) return
-            
+
             // Prevent default paste behavior
             e.preventDefault()
             e.stopPropagation()
-            
+
             // Get current selection or end of document
             const range = quill.getSelection(true)
             const index = range ? range.index : quill.getLength()
-            
+
             // Create embed wrapper HTML
             const wrapperHtml = `<div class="ql-video-embed" contenteditable="false" style="margin: 1rem 0; text-align: center; max-width: 100%;">${embedHtml}</div><p><br></p>`
-            
+
             // Insert embed HTML using Quill's clipboard API
             quill.clipboard.dangerouslyPasteHTML(index, wrapperHtml, 'user')
-            
+
             // Move cursor after embed
             setTimeout(() => {
               const newLength = quill.getLength()
               quill.setSelection(newLength, 'silent')
             }, 10)
           }
-          
+
           // Attach paste handler to editor root with capture phase
           const editorElement = quill.root
           editorElement.addEventListener('paste', handlePaste, true)
-          
+
           console.log('✅ Embed paste handler registered (proven method)')
         } catch (error) {
           console.error('Error setting up paste handler:', error)
@@ -102,7 +106,7 @@ function ArticleForm({ initialData, onSubmit, saving, submitLabel }) {
     } catch (error) {
       console.error('Error in paste handler useEffect:', error)
     }
-    
+
     return () => {
       if (timer) {
         clearTimeout(timer)
@@ -140,7 +144,7 @@ function ArticleForm({ initialData, onSubmit, saving, submitLabel }) {
       {(initialData.source_url || initialData.featured_image_url) && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
           <h3 className="text-sm font-semibold text-blue-900">Article Information</h3>
-          
+
           {initialData.source_url && (
             <div>
               <label className="block text-xs font-medium text-blue-700 mb-1">
@@ -236,16 +240,16 @@ function ArticleForm({ initialData, onSubmit, saving, submitLabel }) {
         <label className="block text-sm font-medium text-gray-700 mb-2">Body *</label>
         <div className="border border-gray-300 rounded-lg">
           <ReactQuill
-              ref={quillRef}
-              theme="snow"
-              value={formData.body}
-              onChange={handleBodyChange}
+            ref={quillRef}
+            theme="snow"
+            value={formData.body}
+            onChange={handleBodyChange}
             modules={{
               toolbar: [
                 [{ 'header': [1, 2, 3, false] }],
                 ['bold', 'italic', 'underline', 'strike'],
                 [{ 'color': [] }, { 'background': [] }],
-                [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                [{ 'list': 'ordered' }, { 'list': 'bullet' }],
                 [{ 'align': [] }],
                 ['link', 'image'],
                 ['clean'],
@@ -255,19 +259,55 @@ function ArticleForm({ initialData, onSubmit, saving, submitLabel }) {
                 matchVisual: false
               }
             }}
-              formats={[
-                'header',
-                'bold', 'italic', 'underline', 'strike',
-                'color', 'background',
-                'list', 'bullet',
-                'align',
-                'link', 'image',
-                'code-block'
-              ]}
-              style={{ height: '400px', marginBottom: '50px' }}
-              placeholder="Write your article content here... (Paste YouTube or social media links to auto-embed)"
-              className="text-sm"
+            formats={[
+              'header',
+              'bold', 'italic', 'underline', 'strike',
+              'color', 'background',
+              'list', 'bullet',
+              'align',
+              'link', 'image',
+              'code-block'
+            ]}
+            style={{ height: '400px', marginBottom: '50px' }}
+            placeholder="Write your article content here... (Paste YouTube or social media links to auto-embed)"
+            className="text-sm"
+          />
+        </div>
+      </div>
+
+      {/* Social Media Content */}
+      <div className="border-t border-gray-200 pt-6">
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">Social Media Content</h3>
+        <div className="grid grid-cols-1 gap-4">
+          <div>
+            <label htmlFor="social_media_poster_text" className="block text-sm font-medium text-gray-700 mb-2">
+              Poster Text (Short & Punchy)
+            </label>
+            <input
+              type="text"
+              id="social_media_poster_text"
+              name="social_media_poster_text"
+              value={formData.social_media_poster_text}
+              onChange={handleChange}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              placeholder="Short text for poster image..."
             />
+            <p className="mt-1 text-xs text-gray-500">2-5 words max.</p>
+          </div>
+          <div>
+            <label htmlFor="social_media_caption" className="block text-sm font-medium text-gray-700 mb-2">
+              Social Media Caption
+            </label>
+            <textarea
+              id="social_media_caption"
+              name="social_media_caption"
+              value={formData.social_media_caption}
+              onChange={handleChange}
+              rows={3}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              placeholder="Engaging caption with hashtags..."
+            />
+          </div>
         </div>
       </div>
 

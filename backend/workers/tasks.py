@@ -371,6 +371,8 @@ REQUIRED OUTPUT FORMAT (provide as JSON):
     "summary_english": "English summary (2-3 sentences)",
     "body_malayalam": "Full article body in Malayalam (4-5 paragraphs in HTML format with <p> tags)",
     "instagram_reel_script": "Thoughtful and engaging Instagram Reel script (voiceover type) in Malayalam. Conversational, engaging, and summarizes the key points. Approx 30-60 seconds when read aloud.",
+    "social_media_poster_text": "Short, punchy Malayalam text for a poster image (2-5 words, very catchy)",
+    "social_media_caption": "Engaging Malayalam caption for social media (Facebook/Instagram) with relevant hashtags",
     "meta_title": "SEO meta title in Malayalam (60-70 characters)",
     "meta_description": "SEO meta description in Malayalam (150-160 characters)",
     "og_title": "OG title in Malayalam (60-70 characters)",
@@ -458,6 +460,8 @@ Return the JSON response with all fields filled."""
                         'summary_english': content_data.get('summary_english', ''),
                         'body_malayalam': content_data.get('body_malayalam', ''),
                         'instagram_reel_script': content_data.get('instagram_reel_script', ''),
+                        'social_media_poster_text': content_data.get('social_media_poster_text', ''),
+                        'social_media_caption': content_data.get('social_media_caption', ''),
                         'meta_title': content_data.get('meta_title', ''),
                         'meta_description': content_data.get('meta_description', ''),
                         'og_title': content_data.get('og_title', ''),
@@ -860,6 +864,8 @@ def _generate_article_task_impl(article_id):
                 article.summary_english = generated_content.get('summary_english', '')
                 article.body = generated_content.get('body_malayalam', '')
                 article.instagram_reel_script = generated_content.get('instagram_reel_script', '')
+                article.social_media_poster_text = generated_content.get('social_media_poster_text', '')
+                article.social_media_caption = generated_content.get('social_media_caption', '')
                 article.meta_title = generated_content.get('meta_title', '')
                 article.meta_description = generated_content.get('meta_description', '')
                 article.og_title = generated_content.get('og_title', '')

@@ -26,6 +26,12 @@ class ArticleAdmin(admin.ModelAdmin):
         ('Media', {
             'fields': ('featured_image', 'og_image')
         }),
+        ('Social Media', {
+            'fields': (
+                'instagram_reel_script', 'instagram_reel_audio',
+                'social_media_poster_text', 'social_media_caption'
+            )
+        }),
         ('SEO/OG', {
             'fields': (
                 'meta_title', 'meta_description',

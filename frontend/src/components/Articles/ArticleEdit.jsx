@@ -64,6 +64,8 @@ function ArticleEdit() {
     summary: '',
     body: '',
     instagram_reel_script: '',
+    social_media_poster_text: '',
+    social_media_caption: '',
     status: 'draft',
     category: 'reliable_sources',
     category_ids: [],
@@ -148,6 +150,8 @@ function ArticleEdit() {
         summary: currentArticle.summary || '',
         body: currentArticle.body || '',
         instagram_reel_script: currentArticle.instagram_reel_script || '',
+        social_media_poster_text: currentArticle.social_media_poster_text || '',
+        social_media_caption: currentArticle.social_media_caption || '',
         status: currentArticle.status || 'draft',
         category: currentArticle.category || 'reliable_sources',
         category_ids: currentArticle.categories?.map(cat => cat.id) || [],
@@ -958,6 +962,43 @@ function ArticleEdit() {
                 </audio>
               </div>
             )}
+          </div>
+
+          {/* Social Media Content */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">Social Media Content</h3>
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="social_media_poster_text" className="block text-sm font-medium text-gray-700 mb-2">
+                  Poster Text (Short & Punchy)
+                </label>
+                <input
+                  type="text"
+                  id="social_media_poster_text"
+                  name="social_media_poster_text"
+                  value={formData.social_media_poster_text || ''}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent font-medium"
+                  placeholder="Short text for poster image..."
+                />
+                <p className="mt-1 text-xs text-gray-500">2-5 words max. Use this for the text overlay on the social media image.</p>
+              </div>
+
+              <div>
+                <label htmlFor="social_media_caption" className="block text-sm font-medium text-gray-700 mb-2">
+                  Social Media Caption
+                </label>
+                <textarea
+                  id="social_media_caption"
+                  name="social_media_caption"
+                  value={formData.social_media_caption || ''}
+                  onChange={handleChange}
+                  rows={4}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  placeholder="Engaging caption with hashtags..."
+                />
+              </div>
+            </div>
           </div>
 
           {/* SEO Section */}

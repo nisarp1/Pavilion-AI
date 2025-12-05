@@ -296,6 +296,10 @@ class Article(models.Model):
         help_text='Generated audio for Instagram Reel'
     )
     
+    # Social Media Content
+    social_media_poster_text = models.TextField(blank=True, help_text="Short, punchy text for social media poster")
+    social_media_caption = models.TextField(blank=True, help_text="Engaging caption for social media post")
+    
     # SEO/OG Data
     meta_title = models.CharField(max_length=255, blank=True)
     meta_description = models.TextField(blank=True)
