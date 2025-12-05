@@ -30,6 +30,19 @@ export const fetchArticle = createAsyncThunk(
   }
 )
 
+export const fetchArticleStatus = createAsyncThunk(
+  'articles/fetchArticleStatus',
+  async (id, { rejectWithValue }) => {
+    try {
+      // Add timestamp to prevent caching
+      const response = await api.get(`/articles/${id}/?_t=${Date.now()}`)
+      return response.data
+    } catch (error) {
+      return rejectWithValue(error.response?.data || error.message)
+    }
+  }
+)
+
 export const createArticle = createAsyncThunk(
   'articles/createArticle',
   async (articleData, { rejectWithValue }) => {
@@ -210,6 +223,14 @@ const articleSlice = createSlice({
       .addCase(fetchArticle.rejected, (state, action) => {
         state.loading = false
         state.error = action.payload
+      })
+      .addCase(fetchArticleStatus.fulfilled, (state, action) => {
+        // Only update the article in the list effectively "silently"
+        // Do NOT touch currentArticle or loading state to ensure unrelated edits aren't affected
+        const index = state.items.findIndex((item) => item.id === action.payload.id)
+        if (index !== -1) {
+          state.items[index] = action.payload
+        }
       })
       .addCase(createArticle.fulfilled, (state, action) => {
         state.items.unshift(action.payload)

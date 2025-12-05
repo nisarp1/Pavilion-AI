@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
-import { fetchArticles, fetchArticle, fetchTrends, fetchAllFeeds, generateArticle, publishArticle, archiveArticle, deleteArticle, updateArticle, clearError, addGeneratingId, removeGeneratingId, addPublishingId, removePublishingId } from '../../store/slices/articleSlice'
+import { fetchArticles, generateArticle, publishArticle, archiveArticle, deleteArticle, updateArticle, clearError, addGeneratingId, removeGeneratingId, addPublishingId, removePublishingId, fetchArticleStatus } from '../../store/slices/articleSlice'
 import { fetchCategories } from '../../store/slices/categorySlice'
 import { format } from 'date-fns'
 import { FiEdit, FiPlay, FiCheck, FiArchive, FiRefreshCw, FiMoreVertical, FiEye, FiTrash2, FiClock, FiExternalLink, FiFilter } from 'react-icons/fi'
@@ -59,9 +59,10 @@ function ArticleList() {
 
       attempts++
       try {
-        // Check article status
-        const fetchResult = await dispatch(fetchArticle(articleId))
-        if (fetchArticle.fulfilled.match(fetchResult)) {
+        // Check article status using the status-only thunk
+        // This prevents overwriting the currentArticle (editor state) if user is editing another article
+        const fetchResult = await dispatch(fetchArticleStatus(articleId))
+        if (fetchArticleStatus.fulfilled.match(fetchResult)) {
           const article = fetchResult.payload
           if (article.status === 'draft' || article.status === 'published') {
             polling = false
