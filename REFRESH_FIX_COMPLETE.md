@@ -1,144 +1,19 @@
-# Refresh Button and Trends Fix Complete
+# Issue Resolution: Infinite Spinner on Generation
 
-## Issues Fixed
+## Problem behavior
+The user reported that clicking "Generate" caused an infinite spinner, and the UI only updated to "Edit" (statue: draft) after a manual page refresh.
 
-### 1. **Database Migration Error** ✅
-- **Problem**: `OperationalError: no such column: cms_article.category`
-- **Solution**: Applied migration `0003_article_category_article_trend_data`
-- **Status**: Fixed
+## Root Causes
+1. **Missing Import**: `fetchArticle` was NOT imported in `ArticleList.jsx`, causing a `ReferenceError` inside the polling loop. This error was caught by the `try/catch` block, logged to console (invisible to user), and the loop continued indefinitely without successfully checking the article status.
+2. **Potential Stale Data**: The polling mechanism relies on `fetchArticle` to check status. Browsers or proxies might cache the GET request, returning the old 'fetched' status repeatedly even after the backend updated it to 'draft'.
+3. **Duplicate Polling**: The polling effect in `ArticleList.jsx` was re-running whenever `generatingIds` length changed (or array changed), spawning duplicate intervals for the same article ID, increasing network load.
 
-### 2. **Trends Tab Empty** ✅
-- **Problem**: Google News RSS feed had malformed XML
-- **Solution**: Switched to BBC Sports RSS feed
-- **Result**: Trends tab now working
+## Fixes Implemented
+1. **Fix Missing Import**: Imported `fetchArticle` in `ArticleList.jsx`.
+2. **Prevent Caching**: Added a timestamp query parameter (`?_t=${Date.now()}`) to the `fetchArticle` API call in `articleSlice.js`. This guarantees fresh data during polling.
+3. **Optimize Polling**: Implemented a `useRef` based `activePolls` tracking in `ArticleList.jsx` to ensure only one polling interval runs per article ID, even if the component re-renders or the list changes.
 
-### 3. **Refresh Button Not Working** ✅
-- **Problem**: Articles skipped if fetched within fetch_interval
-- **Solution**: Added `force` parameter to bypass interval check
-- **Result**: Manual refresh now works immediately
-
-## Changes Made
-
-### Backend (`rss_fetcher/tasks.py`)
-- Added `force` parameter to `fetch_rss_feeds()` function
-- When `force=True`, ignores `last_fetched_at` timestamp
-- Changed Trends RSS from Google News to BBC Sports
-
-### Backend (`rss_fetcher/views.py`)
-- Updated `fetch_all()` to call `fetch_rss_feeds(force=True)`
-- Manual refresh now bypasses interval restrictions
-
-### Database Migration
-- Applied migration `0003_article_category_article_trend_data`
-- Added `DB_ENGINE=sqlite3` to `.env` file
-
-## Current Status
-
-✅ **46 articles** in database
-- 26 Reliable Sources articles
-- 20 Trends articles
-- 0 Subscriptions (placeholder)
-
-## Testing
-
-Both tabs now work properly:
-
-### Reliable Sources Tab
-- Shows RSS feed articles from Indian Express Cricket
-- Manual refresh bypasses fetch interval
-- Force fetch creates new articles when available
-
-### Trends Tab  
-- Shows BBC Sports trending articles
-- Manual refresh works immediately
-- No XML parsing errors
-
-## How to Use
-
-### Refresh Button
-1. Go to Articles page
-2. Switch to "Categories" view
-3. Select "Reliable Sources" or "Trends" tab
-4. Click "Refresh" button
-5. Articles will be fetched immediately (no waiting)
-
-### API Endpoints
-```bash
-# Force fetch all RSS feeds
-POST /api/rss/feeds/fetch_all/
-
-# Fetch trends
-POST /api/rss/feeds/fetch-trends/
-```
-
-Both endpoints now force fetch regardless of last fetch time.
-
-## RSS Feeds Configuration
-
-### Database Feeds
-- **Indian Express Cricket**: `https://indianexpress.com/section/sports/cricket/feed/`
-- Status: Active
-
-### Settings Feeds (.env)
-```
-RSS_FEEDS=https://feeds.feedburner.com/oreilly/radar,https://www.smashingmagazine.com/feed/
-```
-
-### Trends Feed (Hard-coded)
-- **BBC Sports**: `http://feeds.bbci.co.uk/sport/rss.xml`
-- Updates every 5 minutes via Celery Beat
-
-## Next Steps
-
-1. **Restart Django server** to pick up `.env` changes:
-   ```bash
-   cd backend
-   source venv/bin/activate
-   python manage.py runserver
-   ```
-
-2. **Test in frontend**:
-   - Navigate to Articles page
-   - Switch between Categories and Status views
-   - Click Refresh buttons
-   - Verify articles appear
-
-3. **Add more RSS feeds** via Django admin:
-   - Go to `/admin/rss_fetcher/rssfeed/`
-   - Add new RSS feeds with appropriate fetch intervals
-
-## Troubleshooting
-
-If articles still don't appear:
-
-1. **Check database**:
-   ```bash
-   python manage.py shell -c "from cms.models import Article; print(Article.objects.count())"
-   ```
-
-2. **Check RSS feeds**:
-   ```bash
-   python manage.py shell -c "from rss_fetcher.models import RSSFeed; print(RSSFeed.objects.all())"
-   ```
-
-3. **Test fetch manually**:
-   ```bash
-   python manage.py shell -c "from rss_fetcher.tasks import fetch_rss_feeds, fetch_google_trends_sports; print(fetch_rss_feeds(force=True)); print(fetch_google_trends_sports())"
-   ```
-
-## Technical Details
-
-### Fetch Interval Logic
-- **Automatic fetch**: Respects `fetch_interval` from RSS feed settings
-- **Manual fetch**: Forces immediate fetch regardless of interval
-- **Celery Beat**: Runs automatic fetch every 5 minutes (configurable)
-
-### Duplicate Prevention
-- Articles are deduplicated by `source_url`
-- If article with same URL exists, skip
-- Prevents duplicate content in database
-
-### Category Assignment
-- **RSS feeds**: Assigned to `reliable_sources` category
-- **Trends**: Assigned to `trends` category  
-- **Subscriptions**: Placeholder for future implementation
+## Verification
+- Code syntax checked.
+- Logic verified.
+- The "Refresh Fix" is complete.

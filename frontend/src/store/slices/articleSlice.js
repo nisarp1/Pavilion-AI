@@ -21,7 +21,8 @@ export const fetchArticle = createAsyncThunk(
   'articles/fetchArticle',
   async (id, { rejectWithValue }) => {
     try {
-      const response = await api.get(`/articles/${id}/`)
+      // Add timestamp to prevent caching, especially important for polling
+      const response = await api.get(`/articles/${id}/?_t=${Date.now()}`)
       return response.data
     } catch (error) {
       return rejectWithValue(error.response?.data || error.message)

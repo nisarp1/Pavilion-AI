@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
-import { fetchArticles, fetchTrends, fetchAllFeeds, generateArticle, publishArticle, archiveArticle, deleteArticle, updateArticle, clearError, addGeneratingId, removeGeneratingId, addPublishingId, removePublishingId } from '../../store/slices/articleSlice'
+import { fetchArticles, fetchArticle, fetchTrends, fetchAllFeeds, generateArticle, publishArticle, archiveArticle, deleteArticle, updateArticle, clearError, addGeneratingId, removeGeneratingId, addPublishingId, removePublishingId } from '../../store/slices/articleSlice'
 import { fetchCategories } from '../../store/slices/categorySlice'
 import { format } from 'date-fns'
 import { FiEdit, FiPlay, FiCheck, FiArchive, FiRefreshCw, FiMoreVertical, FiEye, FiTrash2, FiClock, FiExternalLink, FiFilter } from 'react-icons/fi'
@@ -12,6 +12,7 @@ function ArticleList() {
   const dispatch = useDispatch()
   const { items, loading, pagination, error, generatingIds = [], publishingIds = [] } = useSelector((state) => state.articles)
   const { categories = [] } = useSelector((state) => state.categories || {})
+  const activePolls = useRef(new Set())
   const [activeTab, setActiveTab] = useState('all')
   const [selectedCategory, setSelectedCategory] = useState('')
   const [refreshing, setRefreshing] = useState(false)
@@ -37,18 +38,20 @@ function ArticleList() {
   useEffect(() => {
     if (generatingIds.length > 0) {
       generatingIds.forEach(id => {
-        pollForCompletion(id)
+        if (!activePolls.current.has(id)) {
+          pollForCompletion(id)
+        }
       })
     }
-  }, [generatingIds.length]) // Only run when length changes (e.g. initial load)
+  }, [generatingIds]) // Only run when array reference changes
 
   const pollForCompletion = (articleId) => {
+    // Prevent duplicate polling
+    if (activePolls.current.has(articleId)) return
+    activePolls.current.add(articleId)
+
     let attempts = 0
     const maxAttempts = 90 // 3 minutes max (2s interval)
-
-    // Check if interval already exists for this ID? 
-    // Ideally we should track intervals, but for simplicity we'll just start a new one
-    // and rely on the status check to clear it quickly if done.
 
     const pollInterval = setInterval(async () => {
       attempts++
@@ -59,6 +62,7 @@ function ArticleList() {
           const article = fetchResult.payload
           if (article.status === 'draft' || article.status === 'published') {
             clearInterval(pollInterval)
+            activePolls.current.delete(articleId)
             refreshList()
             dispatch(removeGeneratingId(articleId))
           }
@@ -69,12 +73,16 @@ function ArticleList() {
 
       if (attempts >= maxAttempts) {
         clearInterval(pollInterval)
+        activePolls.current.delete(articleId)
         dispatch(removeGeneratingId(articleId))
       }
     }, 2000)
 
     // Cleanup interval on unmount
-    return () => clearInterval(pollInterval)
+    return () => {
+      clearInterval(pollInterval)
+      activePolls.current.delete(articleId)
+    }
   }
 
   useEffect(() => {
