@@ -99,6 +99,10 @@ class ArticleViewSet(viewsets.ModelViewSet):
         import threading
         
         def run_generation_task(article_id):
+            # Close any old connections before starting to ensure clean state
+            from django.db import close_old_connections
+            close_old_connections()
+            
             try:
                 from workers.tasks import _generate_article_task_impl
                 import logging
@@ -111,6 +115,9 @@ class ArticleViewSet(viewsets.ModelViewSet):
                 import logging
                 logger = logging.getLogger(__name__)
                 logger.error(f"Threaded generation failed: {e}", exc_info=True)
+            finally:
+                # IMPORTANT: Close the connection for this thread to prevent leaks/locking
+                close_old_connections()
 
         # Start generation in a background thread
         thread = threading.Thread(target=run_generation_task, args=(article.id,))

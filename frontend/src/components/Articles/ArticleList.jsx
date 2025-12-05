@@ -45,15 +45,18 @@ function ArticleList() {
     }
   }, [generatingIds]) // Only run when array reference changes
 
-  const pollForCompletion = (articleId) => {
+  const pollForCompletion = async (articleId) => {
     // Prevent duplicate polling
     if (activePolls.current.has(articleId)) return
     activePolls.current.add(articleId)
 
     let attempts = 0
     const maxAttempts = 90 // 3 minutes max (2s interval)
+    let polling = true
 
-    const pollInterval = setInterval(async () => {
+    const checkStatus = async () => {
+      if (!polling || !activePolls.current.has(articleId)) return
+
       attempts++
       try {
         // Check article status
@@ -61,10 +64,12 @@ function ArticleList() {
         if (fetchArticle.fulfilled.match(fetchResult)) {
           const article = fetchResult.payload
           if (article.status === 'draft' || article.status === 'published') {
-            clearInterval(pollInterval)
+            polling = false
             activePolls.current.delete(articleId)
-            refreshList()
             dispatch(removeGeneratingId(articleId))
+            refreshList()
+            // Ensure we update the UI immediately
+            return
           }
         }
       } catch (e) {
@@ -72,17 +77,19 @@ function ArticleList() {
       }
 
       if (attempts >= maxAttempts) {
-        clearInterval(pollInterval)
+        polling = false
         activePolls.current.delete(articleId)
         dispatch(removeGeneratingId(articleId))
+      } else if (polling) {
+        // Schedule next poll only after current one finishes
+        setTimeout(checkStatus, 2000)
       }
-    }, 2000)
-
-    // Cleanup interval on unmount
-    return () => {
-      clearInterval(pollInterval)
-      activePolls.current.delete(articleId)
     }
+
+    // Start polling
+    checkStatus()
+
+    // Cleanup function not strictly possible with closure, but we handle it via activePolls check
   }
 
   useEffect(() => {
