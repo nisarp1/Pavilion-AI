@@ -146,39 +146,74 @@ function ArticleEdit() {
 
   }, [dispatch, id])
 
+  // Track which article ID we have initialized the form with
+  const initializedArticleId = useRef(null)
+
   useEffect(() => {
     if (currentArticle) {
-      // Format published_at for datetime-local input (YYYY-MM-DDTHH:mm)
-      let publishedAt = ''
-      if (currentArticle.published_at) {
-        const date = new Date(currentArticle.published_at)
-        // Convert to local datetime string format
-        const year = date.getFullYear()
-        const month = String(date.getMonth() + 1).padStart(2, '0')
-        const day = String(date.getDate()).padStart(2, '0')
-        const hours = String(date.getHours()).padStart(2, '0')
-        const minutes = String(date.getMinutes()).padStart(2, '0')
-        publishedAt = `${year}-${month}-${day}T${hours}:${minutes}`
-      }
+      // Logic to determine if this is a first load or a background update
+      const isFirstLoad = initializedArticleId.current !== currentArticle.id
 
-      setFormData({
-        title: currentArticle.title || '',
-        slug: currentArticle.slug || '',
-        summary: currentArticle.summary || '',
-        body: currentArticle.body || '',
-        instagram_reel_script: currentArticle.instagram_reel_script || '',
-        social_media_poster_text: currentArticle.social_media_poster_text || '',
-        social_media_caption: currentArticle.social_media_caption || '',
-        status: currentArticle.status || 'draft',
-        category: currentArticle.category || 'reliable_sources',
-        category_ids: currentArticle.categories?.map(cat => cat.id) || [],
-        author: currentArticle.author || '',
-        meta_title: currentArticle.meta_title || '',
-        meta_description: currentArticle.meta_description || '',
-        og_title: currentArticle.og_title || '',
-        og_description: currentArticle.og_description || '',
-        published_at: publishedAt,
-      })
+      // 1. If it's the first time loading this article, set ALL data
+      if (isFirstLoad) {
+        // Format published_at for datetime-local input (YYYY-MM-DDTHH:mm)
+        let publishedAt = ''
+        if (currentArticle.published_at) {
+          const date = new Date(currentArticle.published_at)
+          const year = date.getFullYear()
+          const month = String(date.getMonth() + 1).padStart(2, '0')
+          const day = String(date.getDate()).padStart(2, '0')
+          const hours = String(date.getHours()).padStart(2, '0')
+          const minutes = String(date.getMinutes()).padStart(2, '0')
+          publishedAt = `${year}-${month}-${day}T${hours}:${minutes}`
+        }
+
+        setFormData({
+          title: currentArticle.title || '',
+          slug: currentArticle.slug || '',
+          summary: currentArticle.summary || '',
+          body: currentArticle.body || '',
+          instagram_reel_script: currentArticle.instagram_reel_script || '',
+          social_media_poster_text: currentArticle.social_media_poster_text || '',
+          social_media_caption: currentArticle.social_media_caption || '',
+          status: currentArticle.status || 'draft',
+          category: currentArticle.category || 'reliable_sources',
+          category_ids: currentArticle.categories?.map(cat => cat.id) || [],
+          author: currentArticle.author || '',
+          meta_title: currentArticle.meta_title || '',
+          meta_description: currentArticle.meta_description || '',
+          og_title: currentArticle.og_title || '',
+          og_description: currentArticle.og_description || '',
+          published_at: publishedAt,
+        })
+
+        initializedArticleId.current = currentArticle.id
+      }
+      // 2. If it's a background update (polling), ONLY update specific fields if they are missing
+      else {
+        setFormData(prev => {
+          const newData = { ...prev }
+          let hasChanges = false
+
+          // Helper to update only if previously empty and now has value
+          const updateIfMissing = (field) => {
+            if (!prev[field] && currentArticle[field]) {
+              newData[field] = currentArticle[field]
+              hasChanges = true
+            }
+          }
+
+          updateIfMissing('instagram_reel_script')
+          updateIfMissing('social_media_poster_text')
+          updateIfMissing('social_media_caption')
+          updateIfMissing('meta_title')
+          updateIfMissing('meta_description')
+          updateIfMissing('og_title')
+          updateIfMissing('og_description')
+
+          return hasChanges ? newData : prev
+        })
+      }
     }
   }, [currentArticle])
 
