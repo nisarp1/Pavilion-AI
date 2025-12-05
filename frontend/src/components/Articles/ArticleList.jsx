@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
-import { fetchArticles, generateArticle, publishArticle, archiveArticle, deleteArticle, updateArticle, clearError, addGeneratingId, removeGeneratingId, addPublishingId, removePublishingId, fetchArticleStatus } from '../../store/slices/articleSlice'
+import { fetchArticles, generateArticle, publishArticle, archiveArticle, deleteArticle, updateArticle, clearError, addGeneratingId, removeGeneratingId, addPublishingId, removePublishingId, fetchArticleStatus, fetchAllFeeds, fetchTrends, fetchArticle } from '../../store/slices/articleSlice'
 import { fetchCategories } from '../../store/slices/categorySlice'
 import { format } from 'date-fns'
 import { FiEdit, FiPlay, FiCheck, FiArchive, FiRefreshCw, FiMoreVertical, FiEye, FiTrash2, FiClock, FiExternalLink, FiFilter } from 'react-icons/fi'
