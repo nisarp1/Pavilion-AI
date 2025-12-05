@@ -129,54 +129,38 @@ function ArticleEdit() {
     dispatch(fetchCategoryTree())
   }, [dispatch, id])
 
-  // Track which article ID we have initialized the form with
-  const initializedArticleId = useRef(null)
-
   useEffect(() => {
     if (currentArticle) {
-      // Logic to determine if this is a first load or a background update
-      const isFirstLoad = initializedArticleId.current !== currentArticle.id
-
-      // 1. If it's the first time loading this article, set ALL data
-      if (isFirstLoad) {
-        // Format published_at for datetime-local input (YYYY-MM-DDTHH:mm)
-        let publishedAt = ''
-        if (currentArticle.published_at) {
-          const date = new Date(currentArticle.published_at)
-          const year = date.getFullYear()
-          const month = String(date.getMonth() + 1).padStart(2, '0')
-          const day = String(date.getDate()).padStart(2, '0')
-          const hours = String(date.getHours()).padStart(2, '0')
-          const minutes = String(date.getMinutes()).padStart(2, '0')
-          publishedAt = `${year}-${month}-${day}T${hours}:${minutes}`
-        }
-
-        const newFormData = {
-          title: currentArticle.title || '',
-          slug: currentArticle.slug || '',
-          summary: currentArticle.summary || '',
-          body: currentArticle.body || '',
-          instagram_reel_script: currentArticle.instagram_reel_script || '',
-          social_media_poster_text: currentArticle.social_media_poster_text || '',
-          social_media_caption: currentArticle.social_media_caption || '',
-          status: currentArticle.status || 'draft',
-          category: currentArticle.category || 'reliable_sources',
-          category_ids: currentArticle.categories?.map(cat => cat.id) || [],
-          author: currentArticle.author || '',
-          meta_title: currentArticle.meta_title || '',
-          meta_description: currentArticle.meta_description || '',
-          og_title: currentArticle.og_title || '',
-          og_description: currentArticle.og_description || '',
-          published_at: publishedAt,
-        }
-
-        // Always set data on first load to ensure we have the correct base state
-        setFormData(newFormData)
-        initializedArticleId.current = currentArticle.id
+      // Format published_at for datetime-local input (YYYY-MM-DDTHH:mm)
+      let publishedAt = ''
+      if (currentArticle.published_at) {
+        const date = new Date(currentArticle.published_at)
+        const year = date.getFullYear()
+        const month = String(date.getMonth() + 1).padStart(2, '0')
+        const day = String(date.getDate()).padStart(2, '0')
+        const hours = String(date.getHours()).padStart(2, '0')
+        const minutes = String(date.getMinutes()).padStart(2, '0')
+        publishedAt = `${year}-${month}-${day}T${hours}:${minutes}`
       }
-      // 2. We no longer perform live background updates to prevent editor reloading
-      // The extra fields (SEO, Social, etc) generated in the background will continue
-      // but will only be visible if the user refreshes manually or on next load.
+
+      setFormData({
+        title: currentArticle.title || '',
+        slug: currentArticle.slug || '',
+        summary: currentArticle.summary || '',
+        body: currentArticle.body || '',
+        instagram_reel_script: currentArticle.instagram_reel_script || '',
+        social_media_poster_text: currentArticle.social_media_poster_text || '',
+        social_media_caption: currentArticle.social_media_caption || '',
+        status: currentArticle.status || 'draft',
+        category: currentArticle.category || 'reliable_sources',
+        category_ids: currentArticle.categories?.map(cat => cat.id) || [],
+        author: currentArticle.author || '',
+        meta_title: currentArticle.meta_title || '',
+        meta_description: currentArticle.meta_description || '',
+        og_title: currentArticle.og_title || '',
+        og_description: currentArticle.og_description || '',
+        published_at: publishedAt,
+      })
     }
   }, [currentArticle])
 
