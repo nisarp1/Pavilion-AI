@@ -278,36 +278,30 @@ def _get_trending_topics_from_google_trends():
     """
     trending_topics = []
     
-    # Strategy 1: Realtime Trending Searches (pytrends)
-    # This is the most accurate source for 'now'
+    # Strategy 1: Pytrends Realtime (Primary)
     if PYTRENDS_AVAILABLE:
         try:
-                        return trending_topics[:10]
-                        
-            except Exception as e:
-                logger.warning(f"pytrends Realtime failed: {str(e)}")
+            pytrends = TrendReq(hl='en-US', tz=330, retries=2, backoff_factor=0.5)
+            logger.info("Fetching Google Trends Realtime (IN)...")
+            
+            df = pytrends.realtime_trending_searches(pn='IN')
+            
+            if not df.empty:
+                titles = df['title'].tolist()
+                logger.info(f"Pytrends Realtime found: {titles[:5]}")
+                trending_topics.extend(titles)
                 
-            # Fallback: Daily Trending Searches
-            logger.info("Strategy 1b: Fetching Daily trending searches from pytrends (india)...")
-            trending_searches_india = pytrends.trending_searches(pn='india')
-            if trending_searches_india is not None:
-                # Handle DataFrame
-                if hasattr(trending_searches_india, 'iloc'):
-                    trends = trending_searches_india.iloc[:, 0].tolist()
-                else:
-                    trends = list(trending_searches_india)
-                    
-                for trend in trends:
-                    trend_str = str(trend)
-                    if any(k in trend_str.lower() for k in sports_keywords):
-                        trending_topics.append(trend_str)
-                        
-                if trending_topics:
-                   logger.info(f"Using {len(trending_topics)} daily sports trends: {trending_topics[:5]}")
-                   return trending_topics[:10]
-                   
         except Exception as e:
-            logger.error(f"pytrends Strategy failed: {str(e)}")
+            logger.error(f"Pytrends Realtime failed: {e}")
+
+    # Strategy 2: Visual Screenshot + AI (New Robust Method)
+    try:
+        visual_topics = run_visual_fetch()
+        if visual_topics:
+            logger.info(f"Visual AI found topics: {visual_topics}")
+            trending_topics.extend(visual_topics)
+    except Exception as e:
+        logger.error(f"Visual Strategy failed: {e}")
     
     # Strategy 2 was here (old pytrends), now merged into Strategy 1 above for cleaner flow.
     pass
