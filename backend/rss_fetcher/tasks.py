@@ -1472,3 +1472,95 @@ def enhance_articles_with_google_trends():
             'error': error_msg
         }
 
+
+def _fetch_articles_for_topic_task(topic):
+    """
+    Fetch 2-3 most relevant articles for a specific trend topic from Google News on-demand.
+    Used when a user clicks a trend card.
+    """
+    logger.info(f"On-demand fetching articles for topic: {topic}")
+    articles_created = 0
+    created_articles = []
+    
+    try:
+        # URL encode the topic
+        from urllib.parse import quote_plus
+        encoded_topic = quote_plus(topic)
+        # q={topic}+sports ensures we get sports context
+        # when:1d ensures freshness
+        google_news_url = f"https://news.google.com/rss/search?q={encoded_topic}+sports+when:24h&hl=en&gl=IN&ceid=IN:en"
+        
+        feed = feedparser.parse(google_news_url)
+        
+        if feed.bozo:
+            logger.warning(f"Feed parsing issues for {topic}: {feed.bozo_exception}")
+            
+        # We only want the top 3 most relevant (RSS is usually sorted by relevance/date)
+        for entry in feed.entries[:3]:
+            try:
+                url = entry.get('link', '')
+                if not url:
+                    continue
+                
+                # Check if article already exists
+                existing = Article.objects.filter(source_url=url).first()
+                if existing:
+                    created_articles.append(existing)
+                    continue
+                
+                # Determine sport
+                title = entry.get('title', 'Untitled').lower()
+                if any(word in title for word in ['cricket', 'ipl', 'bcci']):
+                    sport = 'Cricket'
+                elif any(word in title for word in ['football', 'soccer', 'premier league']):
+                    sport = 'Football'
+                else:
+                    sport = 'Sports'
+                
+                trend_data = {
+                    'title': entry.get('title', ''),
+                    'link': url,
+                    'published': entry.get('published', ''),
+                    'sport': sport,
+                    'trending_topic': topic,
+                    'source': 'Google News (On-Demand)',
+                    'from_google_trends': True,
+                }
+                
+                summary = entry.get('summary', '') or entry.get('description', '')
+                
+                slug = slugify(entry.get('title', 'Untitled'))
+                base_slug = slug
+                counter = 1
+                while Article.objects.filter(slug=slug).exists():
+                    slug = f"{base_slug}-{counter}"
+                    counter += 1
+                
+                article = Article.objects.create(
+                    title=entry.get('title', 'Untitled'),
+                    slug=slug,
+                    summary=summary[:500],
+                    status='fetched',
+                    source_url=url,
+                    source_feed='Google News (On-Demand)',
+                    category='trends',
+                    trend_data=trend_data,
+                )
+                
+                articles_created += 1
+                created_articles.append(article)
+                logger.info(f"Created on-demand article: {article.title}")
+                
+            except Exception as e:
+                logger.error(f"Error processing entry: {e}")
+                continue
+                
+    except Exception as e:
+        logger.error(f"Error in on-demand fetch: {e}")
+        return {'success': False, 'error': str(e)}
+
+    return {
+        'success': True,
+        'articles_created': articles_created,
+        'articles': [{'id': a.id, 'title': a.title, 'url': a.source_url} for a in created_articles]
+    }

@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from django.utils import timezone
 from .models import RSSFeed
 from .serializers import RSSFeedSerializer
-from .tasks import fetch_single_feed_task, fetch_single_rss_feed, fetch_rss_feeds, fetch_google_trends_sports, enhance_articles_with_google_trends, _get_trending_topics_from_google_trends
+from .tasks import fetch_single_feed_task, fetch_single_rss_feed, fetch_rss_feeds, fetch_google_trends_sports, enhance_articles_with_google_trends, _get_trending_topics_from_google_trends, _fetch_articles_for_topic_task
 import logging
 
 
@@ -123,6 +123,26 @@ class RSSFeedViewSet(viewsets.ModelViewSet):
             return Response({
                 'error': str(e)
             }, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'], url_path='fetch-topic-articles')
+    def fetch_topic_articles(self, request):
+        """
+        Fetch 2-3 most relevant articles for a specific trend topic on usage demand.
+        Params: topic (string)
+        """
+        topic = request.data.get('topic')
+        if not topic:
+             return Response({'error': 'topic parameter is required'}, status=status.HTTP_400_BAD_REQUEST)
+             
+        try:
+            # Run synchronously for immediate feedback usually, or async if slow
+            # For "Click to fetch", user usually waits, but scraping can take 5s.
+            # Let's run sync for simplicity unless it times out.
+            result = _fetch_articles_for_topic_task(topic)
+            return Response(result, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     
     @action(detail=False, methods=['get'], url_path='realtime-trends')
     def realtime_trends(self, request):
