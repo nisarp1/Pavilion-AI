@@ -761,7 +761,7 @@ def _classify_sports_trends_with_ai(trends_list):
         import google.generativeai as genai
         
         genai.configure(api_key=settings.GEMINI_API_KEY)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-2.0-flash')
         
         prompt = f"""
         Analyze this list of trending topics from India:
