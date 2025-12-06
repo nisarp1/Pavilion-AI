@@ -1505,8 +1505,15 @@ def _fetch_articles_for_topic_task(topic):
         feed = feedparser.parse(response.content)
         
         if not feed.entries:
-             logger.warning(f"No entries found for topic: {topic}")
-             return {'success': False, 'error': "No recent articles found for this topic."}
+             logger.warning(f"No entries found for topic: {topic}. Trying broader search.")
+             # Fallback: Try searching without 'sports' or date restriction if too strict
+             fallback_url = f"https://news.google.com/rss/search?q={encoded_topic}&hl=en&gl=IN&ceid=IN:en"
+             response = requests.get(fallback_url, headers=headers, timeout=10)
+             if response.status_code == 200:
+                feed = feedparser.parse(response.content)
+
+        if not feed.entries:
+             return {'success': False, 'error': f"No recent articles found for '{topic}'."}
              
         # We only want the top 3 most relevant (RSS is usually sorted by relevance/date)
         for entry in feed.entries[:3]:
