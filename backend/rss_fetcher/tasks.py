@@ -227,13 +227,18 @@ def fetch_google_trends_sports():
     """
     logger.info("Starting Sports Trends fetch using Google Trends")
     
-    # Step 1: Get trending topics from Google Trends
-    trending_topics = _get_trending_topics_from_google_trends()
+    # Step 1: Get trending topics from Google Trends (Realtime)
+    google_trends = _get_trending_topics_from_google_trends()
     
-    # Fallback: Use common sports keywords if Google Trends fails
-    if not trending_topics or len(trending_topics) == 0:
-        logger.info("Google Trends returned no topics. Using fallback sports keywords.")
-        # Use current popular sports keywords as fallback
+    # Step 2: Get trending topics from Twitter (via Trends24) - 30min and 24h
+    twitter_trends = _get_trends24_sports_trends()
+    
+    # Combine and deduplicate
+    trending_topics = list(set(google_trends + twitter_trends))
+    
+    # Fallback: Use common sports keywords if no trends found
+    if not trending_topics:
+        logger.info("No trends found from Google or Twitter. Using fallback sports keywords.")
         trending_topics = [
             'cricket', 'football', 'ipl', 'premier league', 'world cup',
             'soccer', 'champions league', 'india cricket', 'england cricket',
@@ -241,10 +246,10 @@ def fetch_google_trends_sports():
         ]
         logger.info(f"Using fallback keywords: {trending_topics[:5]}")
     
-    if trending_topics and len(trending_topics) > 0:
-        logger.info(f"Found {len(trending_topics)} trending topics: {trending_topics[:5]}")
+    if trending_topics:
+        logger.info(f"Found {len(trending_topics)} total trending topics: {trending_topics[:10]}")
         
-        # Step 2: Fetch articles based on trending topics
+        # Step 3: Fetch articles based on trending topics
         if settings.NEWS_API_KEY:
             result = _fetch_articles_from_trending_topics(trending_topics)
             if result['success'] and result['articles_created'] > 0:
@@ -317,12 +322,18 @@ def _get_trending_topics_from_google_trends():
             pytrends = TrendReq(hl='en-IN', tz=330)
             time.sleep(2)  # Initial delay to avoid rate limits
             
-            # Try to get trending searches
+            # Try to get realtime trending searches (more accurate for "now")
             try:
-                trending_searches_india = pytrends.trending_searches(pn='india')
-            except Exception as method_error:
-                logger.debug(f"trending_searches failed: {str(method_error)}")
-                trending_searches_india = None
+                logger.info("Fetching Realtime trending searches from pytrends...")
+                trending_searches_india = pytrends.realtime_trending_searches(pn='IN')
+            except Exception as realtime_error:
+                logger.debug(f"realtime_trending_searches failed: {str(realtime_error)}")
+                # Fallback to daily
+                try:
+                    trending_searches_india = pytrends.trending_searches(pn='india')
+                except Exception as daily_error:
+                    logger.debug(f"trending_searches failed: {str(daily_error)}")
+                    trending_searches_india = None
             
             if trending_searches_india is not None and len(trending_searches_india) > 0:
                 logger.info(f"Got {len(trending_searches_india)} trending searches from India")
@@ -735,6 +746,85 @@ def _get_fallback_trends():
         'IPL Updates',
         'Premier League',
     ]
+
+
+def _get_trends24_sports_trends():
+    """
+    Fetch Twitter trends from trends24.in/india/
+    Gets both 30-minute (current) and 24-hour (aggregate) trends.
+    Filters for sports-related keywords.
+    """
+    trending_topics = []
+    sports_keywords = ['cricket', 'football', 'soccer', 'ipl', 'premier', 'league', 'match', 'sport', 'world cup', 'championship', 'tournament', 'team', 'player', 'goal', 'wicket', 'run', 'score', 'bcci', 'kohli', 'dhoni', 'messi', 'ronaldo', 'rohit', 'pandya', 'stokes', 'babar', 'azham', 'sachin', 'ganguly', 'dravid', 'olympics', 'asian games', 'wrestling', 'hockey', 'badminton', 'tennis', 'open', 'wimbledon', 'us open', 'australian', 'french', 'kabaddi', 'pro kabaddi']
+    
+    url = "https://trends24.in/india/"
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.04472.124 Safari/537.36'
+    }
+    
+    try:
+        logger.info("Fetching Twitter trends from Trends24...")
+        response = requests.get(url, headers=headers, timeout=15)
+        
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.content, 'html.parser')
+            lists = soup.find_all('ol', class_='trend-card__list')
+            
+            logger.info(f"Found {len(lists)} trend lists on Trends24")
+            
+            # Helper to process a list of list items
+            def process_list(list_items, source_label):
+                topics = []
+                for li in list_items:
+                    text = li.get_text()
+                    # Clean text (remove view counts like "15K")
+                    # Usually format is "Topic 15K" or just "Topic"
+                    # We'll just take the text, and maybe clean trailing numbers if they look like counts?
+                    # But often the count is not easily separable without regex logic that might be brittle.
+                    # Trends24 structure: <li><a>Topic</a> <span class="trend-card__list-count">15K</span></li>
+                    # Let's try to find the anchor tag specifically.
+                    
+                    anchor = li.find('a')
+                    if anchor:
+                        text = anchor.get_text(strip=True)
+                    else:
+                        # Fallback if no anchor, remove trailing numbers/K/M
+                        text = re.sub(r'\s*\d+[KkMm]$', '', text).strip()
+                        
+                    if text and len(text) > 2:
+                        # Check if sports related
+                        text_lower = text.lower()
+                        if any(keyword in text_lower for keyword in sports_keywords):
+                            topics.append(text)
+                            logger.info(f"Found Twitter sports trend ({source_label}): {text}")
+                return topics
+
+            if lists:
+                # 1. current trends (30 mins / List 0)
+                current_trends = process_list(lists[0].find_all('li'), "30min")
+                trending_topics.extend(current_trends)
+                
+                # 2. 24h trends (Aggregate from all lists)
+                # We will count frequency to find "One Day" persistent trends
+                all_24h_trends = {}
+                for i, lst in enumerate(lists):
+                    items = process_list(lst.find_all('li'), f"Hour {i}")
+                    for item in items:
+                        all_24h_trends[item] = all_24h_trends.get(item, 0) + 1
+                
+                # Get trends that appeared in at least 3 hourly lists (persistent trends)
+                persistent_trends = [k for k, v in all_24h_trends.items() if v >= 3]
+                logger.info(f"Found {len(persistent_trends)} persistent (24h) sports trends")
+                trending_topics.extend(persistent_trends)
+        
+        else:
+            logger.warning(f"Trends24 returned status {response.status_code}")
+            
+    except Exception as e:
+        logger.error(f"Error fetching Trends24: {str(e)}")
+    
+    # Deduplicate
+    return list(set(trending_topics))
 
 
 def _get_twitter_trends_sports_india():
