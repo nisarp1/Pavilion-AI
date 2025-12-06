@@ -282,26 +282,6 @@ def _get_trending_topics_from_google_trends():
     # This is the most accurate source for 'now'
     if PYTRENDS_AVAILABLE:
         try:
-            logger.info("Strategy 1: Fetching Realtime trending searches from pytrends (IN)...")
-            pytrends = TrendReq(hl='en-IN', tz=330)
-            
-            # Realtime trends (past 24h, updated frequently)
-            try:
-                trending_searches = pytrends.realtime_trending_searches(pn='IN')
-                # realtime returns a DataFrame with 'title', 'entity_names' etc.
-                if not trending_searches.empty:
-                    # 'title' column usually holds the main trend
-                    titles = trending_searches['title'].tolist()
-                    logger.info(f"Found {len(titles)} realtime trends from pytrends")
-                    
-                    for title in titles:
-                        if title and title not in trending_topics:
-                             # Filter for sports keywords naturally
-                             if any(k in title.lower() for k in sports_keywords):
-                                 trending_topics.append(title)
-                    
-                    if trending_topics:
-                        logger.info(f"Using {len(trending_topics)} realtime sports trends: {trending_topics[:5]}")
                         return trending_topics[:10]
                         
             except Exception as e:
