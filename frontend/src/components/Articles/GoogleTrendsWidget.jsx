@@ -62,7 +62,8 @@ function GoogleTrendsWidget({ onArticleCreated }) {
       }
     } catch (err) {
       console.error("Error fetching articles for topic:", err)
-      alert("Failed to fetch articles for this topic.")
+      const errorMsg = err.response?.data?.error || "Failed to fetch articles for this topic."
+      alert(errorMsg)
     } finally {
       setFetchingTopic(null)
     }
