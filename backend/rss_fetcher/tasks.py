@@ -278,99 +278,59 @@ def _get_trending_topics_from_google_trends():
     """
     trending_topics = []
     
-    # Strategy 1: Use Google Trends RSS feed for Sports category (category=17) in India
-    # This gives us the ACTUAL trending sports topics from Google Trends
-    try:
-        logger.info("Fetching Google Trends RSS for Sports category in India...")
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/rss+xml, application/xml, */*',
-            'Accept-Language': 'en-US,en;q=0.9',
-        }
-        
-        # Google Trends RSS for Sports category in India (category=17)
-        rss_url = 'https://trends.google.com/trends/trendingsearches/daily/rss?geo=IN&category=17'
-        
-        response = requests.get(rss_url, headers=headers, timeout=15)
-        if response.status_code == 200 and response.content:
-            feed = feedparser.parse(response.content)
-            if hasattr(feed, 'entries') and feed.entries:
-                logger.info(f"Found {len(feed.entries)} sports trending entries from Google Trends RSS")
-                for entry in feed.entries[:15]:
-                    title = entry.get('title', '').strip()
-                    # Clean up title - remove common prefixes
-                    title = re.sub(r'^(Google Trends|Trending|Trends)\s*[-:]\s*', '', title, flags=re.IGNORECASE)
-                    title = title.strip()
-                    
-                    if title and len(title) > 3 and len(title) < 100:
-                        if title not in trending_topics:
-                            trending_topics.append(title)
-                            logger.info(f"Found sports trending topic: {title}")
-                
-                if len(trending_topics) >= 5:
-                    logger.info(f"Found {len(trending_topics)} sports trending topics from Google Trends RSS")
-                    return trending_topics[:10]
-        else:
-            logger.warning(f"Google Trends RSS returned status {response.status_code}")
-    except Exception as e:
-        logger.debug(f"Google Trends RSS failed: {str(e)}")
-    
-    # Strategy 2: Try pytrends API for sports category (if available)
+    # Strategy 1: Realtime Trending Searches (pytrends)
+    # This is the most accurate source for 'now'
     if PYTRENDS_AVAILABLE:
         try:
-            logger.info("Trying pytrends API for sports trends in India...")
+            logger.info("Strategy 1: Fetching Realtime trending searches from pytrends (IN)...")
             pytrends = TrendReq(hl='en-IN', tz=330)
-            time.sleep(2)  # Initial delay to avoid rate limits
             
-            # Try to get realtime trending searches (more accurate for "now")
+            # Realtime trends (past 24h, updated frequently)
             try:
-                logger.info("Fetching Realtime trending searches from pytrends...")
-                trending_searches_india = pytrends.realtime_trending_searches(pn='IN')
-            except Exception as realtime_error:
-                logger.debug(f"realtime_trending_searches failed: {str(realtime_error)}")
-                # Fallback to daily
-                try:
-                    trending_searches_india = pytrends.trending_searches(pn='india')
-                except Exception as daily_error:
-                    logger.debug(f"trending_searches failed: {str(daily_error)}")
-                    trending_searches_india = None
-            
-            if trending_searches_india is not None and len(trending_searches_india) > 0:
-                logger.info(f"Got {len(trending_searches_india)} trending searches from India")
-                sports_keywords = ['cricket', 'football', 'soccer', 'ipl', 'premier', 'league', 'match', 'sport', 'world cup', 'championship', 'tournament', 'team', 'player', 'goal', 'wicket', 'run', 'score', 'bcci', 'kohli', 'dhoni', 'messi', 'ronaldo']
+                trending_searches = pytrends.realtime_trending_searches(pn='IN')
+                # realtime returns a DataFrame with 'title', 'entity_names' etc.
+                if not trending_searches.empty:
+                    # 'title' column usually holds the main trend
+                    titles = trending_searches['title'].tolist()
+                    logger.info(f"Found {len(titles)} realtime trends from pytrends")
+                    
+                    for title in titles:
+                        if title and title not in trending_topics:
+                             # Filter for sports keywords naturally
+                             if any(k in title.lower() for k in sports_keywords):
+                                 trending_topics.append(title)
+                    
+                    if trending_topics:
+                        logger.info(f"Using {len(trending_topics)} realtime sports trends: {trending_topics[:5]}")
+                        return trending_topics[:10]
+                        
+            except Exception as e:
+                logger.warning(f"pytrends Realtime failed: {str(e)}")
                 
-                # Handle both DataFrame and list formats
-                if hasattr(trending_searches_india, 'iterrows'):
-                    for idx, row in trending_searches_india.head(25).iterrows():
-                        try:
-                            trend = str(row.iloc[0]) if hasattr(row, 'iloc') else str(row[0])
-                            trend_lower = trend.lower()
-                            # Filter for sports-related only
-                            if any(keyword in trend_lower for keyword in sports_keywords):
-                                if trend and trend.strip() and trend not in trending_topics:
-                                    trending_topics.append(trend.strip())
-                                    logger.info(f"Found sports trending topic: {trend}")
-                        except Exception as e:
-                            logger.debug(f"Error processing row: {str(e)}")
-                            continue
-                elif isinstance(trending_searches_india, list):
-                    for trend in trending_searches_india[:25]:
-                        try:
-                            trend_str = str(trend) if not isinstance(trend, str) else trend
-                            trend_lower = trend_str.lower()
-                            if any(keyword in trend_lower for keyword in sports_keywords):
-                                if trend_str and trend_str.strip() and trend_str not in trending_topics:
-                                    trending_topics.append(trend_str.strip())
-                                    logger.info(f"Found sports trending topic: {trend_str}")
-                        except Exception as e:
-                            logger.debug(f"Error processing trend: {str(e)}")
-                            continue
-                
+            # Fallback: Daily Trending Searches
+            logger.info("Strategy 1b: Fetching Daily trending searches from pytrends (india)...")
+            trending_searches_india = pytrends.trending_searches(pn='india')
+            if trending_searches_india is not None:
+                # Handle DataFrame
+                if hasattr(trending_searches_india, 'iloc'):
+                    trends = trending_searches_india.iloc[:, 0].tolist()
+                else:
+                    trends = list(trending_searches_india)
+                    
+                for trend in trends:
+                    trend_str = str(trend)
+                    if any(k in trend_str.lower() for k in sports_keywords):
+                        trending_topics.append(trend_str)
+                        
                 if trending_topics:
-                    logger.info(f"Found {len(trending_topics)} sports trending topics from pytrends: {trending_topics[:10]}")
-                    return trending_topics[:10]
+                   logger.info(f"Using {len(trending_topics)} daily sports trends: {trending_topics[:5]}")
+                   return trending_topics[:10]
+                   
         except Exception as e:
-            logger.warning(f"pytrends API failed: {str(e)}")
+            logger.error(f"pytrends Strategy failed: {str(e)}")
+    
+    # Strategy 2 was here (old pytrends), now merged into Strategy 1 above for cleaner flow.
+    pass
     
     # Strategy 3: Try web scraping Google Trends sports page
     logger.info("Trying to scrape Google Trends sports page...")
