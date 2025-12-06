@@ -748,13 +748,53 @@ def _get_fallback_trends():
     ]
 
 
+def _classify_sports_trends_with_ai(trends_list):
+    """
+    Use Gemini AI to filter a list of trends and return only the sports-related ones.
+    This effectively mimics the X 'Sports' tab classification.
+    """
+    if not settings.GEMINI_API_KEY:
+        logger.warning("Gemini API key missing, skipping AI classification")
+        return []
+        
+    try:
+        import google.generativeai as genai
+        
+        genai.configure(api_key=settings.GEMINI_API_KEY)
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        prompt = f"""
+        Analyze this list of trending topics from India:
+        {json.dumps(trends_list)}
+        
+        Return a JSON array containing ONLY the topics that are related to Sports (Cricket, Football, WWE, Tennis, Basketball, F1, Olympics, individual athletes, sports venues/stadiums, sports hashtags).
+        Include topics like 'Gunther' (WWE), 'Christchurch' (Cricket Venue), 'Ravindra Jadeja' (Cricketer), etc.
+        Do not include political, entertainment, or general news topics unless they are directly sports-related.
+        
+        Return ONLY valid JSON array of strings. Example: ["Kohli", "Manchester United", "#IPL2024"]
+        """
+        
+        response = model.generate_content(prompt)
+        text = response.text.replace('```json', '').replace('```', '').strip()
+        
+        sports_trends = json.loads(text)
+        if isinstance(sports_trends, list):
+            logger.info(f"AI classified {len(sports_trends)} sports trends from {len(trends_list)} candidates")
+            return sports_trends
+            
+    except Exception as e:
+        logger.error(f"AI classification failed: {str(e)}")
+        
+    return []
+
+
 def _get_trends24_sports_trends():
     """
     Fetch Twitter trends from trends24.in/india/
     Gets both 30-minute (current) and 24-hour (aggregate) trends.
-    Filters for sports-related keywords.
+    Uses AI to classify them as 'Sports' to get exact matches like specific players or venues.
     """
-    trending_topics = []
+    raw_candidates = []
     sports_keywords = ['cricket', 'football', 'soccer', 'ipl', 'premier', 'league', 'match', 'sport', 'world cup', 'championship', 'tournament', 'team', 'player', 'goal', 'wicket', 'run', 'score', 'bcci', 'kohli', 'dhoni', 'messi', 'ronaldo', 'rohit', 'pandya', 'stokes', 'babar', 'azham', 'sachin', 'ganguly', 'dravid', 'olympics', 'asian games', 'wrestling', 'hockey', 'badminton', 'tennis', 'open', 'wimbledon', 'us open', 'australian', 'french', 'kabaddi', 'pro kabaddi']
     
     url = "https://trends24.in/india/"
@@ -772,50 +812,69 @@ def _get_trends24_sports_trends():
             
             logger.info(f"Found {len(lists)} trend lists on Trends24")
             
-            # Helper to process a list of list items
-            def process_list(list_items, source_label):
-                topics = []
-                for li in list_items:
-                    text = li.get_text()
-                    # Clean text (remove view counts like "15K")
-                    # Usually format is "Topic 15K" or just "Topic"
-                    # We'll just take the text, and maybe clean trailing numbers if they look like counts?
-                    # But often the count is not easily separable without regex logic that might be brittle.
-                    # Trends24 structure: <li><a>Topic</a> <span class="trend-card__list-count">15K</span></li>
-                    # Let's try to find the anchor tag specifically.
-                    
-                    anchor = li.find('a')
-                    if anchor:
-                        text = anchor.get_text(strip=True)
-                    else:
-                        # Fallback if no anchor, remove trailing numbers/K/M
-                        text = re.sub(r'\s*\d+[KkMm]$', '', text).strip()
-                        
-                    if text and len(text) > 2:
-                        # Check if sports related
-                        text_lower = text.lower()
-                        if any(keyword in text_lower for keyword in sports_keywords):
-                            topics.append(text)
-                            logger.info(f"Found Twitter sports trend ({source_label}): {text}")
-                return topics
+            # 1. Collect ALL raw candidates from top lists
+            # We explicitly want the top 50-100 items to feed to AI
+            seen = set()
+            
+            # Helper to extract clean text
+            def extract_text(li):
+                anchor = li.find('a')
+                if anchor:
+                    text = anchor.get_text(strip=True)
+                else:
+                    text = li.get_text(strip=True)
+                    text = re.sub(r'\s*\d+[KkMm]$', '', text).strip()
+                return text
 
-            if lists:
-                # 1. current trends (30 mins / List 0)
-                current_trends = process_list(lists[0].find_all('li'), "30min")
-                trending_topics.extend(current_trends)
+            # Get Top 3 Hourly lists (Current, -1h, -2h) to capture immediate trends
+            for i in range(min(3, len(lists))):
+                items = lists[i].find_all('li')
+                for li in items:
+                    text = extract_text(li)
+                    if text and len(text) > 2 and text not in seen:
+                        raw_candidates.append(text)
+                        seen.add(text)
+            
+            # Get persistent 24h candidates (appeared in 4+ lists)
+            all_24h_counts = {}
+            for lst in lists:
+                items = lst.find_all('li')
+                for li in items:
+                    text = extract_text(li)
+                    if text:
+                        all_24h_counts[text] = all_24h_counts.get(text, 0) + 1
+            
+            for k, v in all_24h_counts.items():
+                if v >= 4 and k not in seen:
+                    raw_candidates.append(k)
+                    seen.add(k)
+            
+            logger.info(f"Collected {len(raw_candidates)} unique candidates for AI classification")
+            
+            # 2. Use AI to Filter for Sports
+            # This solves the 'Gunther', 'Christchurch' problem
+            ai_filtered_trends = _classify_sports_trends_with_ai(raw_candidates)
+            
+            if ai_filtered_trends:
+                logger.info(f"Using {len(ai_filtered_trends)} AI-verified sports trends")
+                # Fallback: clean up duplicates (case insensitive)
+                final_trends = []
+                seen_lower = set()
+                for t in ai_filtered_trends:
+                    if t.lower() not in seen_lower:
+                        final_trends.append(t)
+                        seen_lower.add(t.lower())
+                return final_trends
                 
-                # 2. 24h trends (Aggregate from all lists)
-                # We will count frequency to find "One Day" persistent trends
-                all_24h_trends = {}
-                for i, lst in enumerate(lists):
-                    items = process_list(lst.find_all('li'), f"Hour {i}")
-                    for item in items:
-                        all_24h_trends[item] = all_24h_trends.get(item, 0) + 1
-                
-                # Get trends that appeared in at least 3 hourly lists (persistent trends)
-                persistent_trends = [k for k, v in all_24h_trends.items() if v >= 3]
-                logger.info(f"Found {len(persistent_trends)} persistent (24h) sports trends")
-                trending_topics.extend(persistent_trends)
+            # 3. Fallback to Keyword Matching if AI fails
+            logger.warning("AI classification returned empty or failed, falling back to keywords")
+            keyword_filtered = []
+            for text in raw_candidates:
+                text_lower = text.lower()
+                if any(keyword in text_lower for keyword in sports_keywords):
+                    keyword_filtered.append(text)
+            
+            return keyword_filtered
         
         else:
             logger.warning(f"Trends24 returned status {response.status_code}")
@@ -823,8 +882,7 @@ def _get_trends24_sports_trends():
     except Exception as e:
         logger.error(f"Error fetching Trends24: {str(e)}")
     
-    # Deduplicate
-    return list(set(trending_topics))
+    return []
 
 
 def _get_twitter_trends_sports_india():
