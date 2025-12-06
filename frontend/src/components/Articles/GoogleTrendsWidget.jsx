@@ -1,21 +1,24 @@
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { fetchRealtimeTrends, fetchTwitterTrends } from '../../store/slices/trendsSlice'
-import { FiTrendingUp, FiRefreshCw, FiExternalLink } from 'react-icons/fi'
+import { FiTrendingUp, FiRefreshCw, FiExternalLink, FiPlusCircle, FiCheckCircle } from 'react-icons/fi'
+import api from '../../services/api'
 
-function GoogleTrendsWidget() {
+function GoogleTrendsWidget({ onArticleCreated }) {
   const dispatch = useDispatch()
-  const { 
-    trendingTopics, 
+  const {
+    trendingTopics,
     twitterTrendingTopics,
-    loading, 
+    loading,
     twitterLoading,
-    error, 
+    error,
     twitterError,
     lastUpdated,
     twitterLastUpdated
   } = useSelector((state) => state.trends)
   const [activeTab, setActiveTab] = useState('google') // 'google' or 'twitter'
+  const [fetchingTopic, setFetchingTopic] = useState(null)
+  const [fetchSuccess, setFetchSuccess] = useState(null)
 
   useEffect(() => {
     // Fetch Google trends on mount
@@ -37,6 +40,31 @@ function GoogleTrendsWidget() {
       dispatch(fetchRealtimeTrends())
     } else {
       dispatch(fetchTwitterTrends())
+    }
+  }
+
+  const handleTopicClick = async (topic) => {
+    if (fetchingTopic) return
+
+    setFetchingTopic(topic)
+    setFetchSuccess(null)
+
+    try {
+      const response = await api.post('/rss/feeds/fetch-topic-articles/', { topic })
+      if (response.data.success) {
+        setFetchSuccess(topic)
+        // Trigger article list refresh
+        if (onArticleCreated) {
+          onArticleCreated()
+        }
+        // Clear success message after 3 seconds
+        setTimeout(() => setFetchSuccess(null), 3000)
+      }
+    } catch (err) {
+      console.error("Error fetching articles for topic:", err)
+      alert("Failed to fetch articles for this topic.")
+    } finally {
+      setFetchingTopic(null)
     }
   }
 
@@ -92,21 +120,19 @@ function GoogleTrendsWidget() {
           <div className="flex gap-4 -mb-px">
             <button
               onClick={() => setActiveTab('google')}
-              className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
-                activeTab === 'google'
+              className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${activeTab === 'google'
                   ? 'border-blue-600 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
+                }`}
             >
               Google Trends
             </button>
             <button
               onClick={() => setActiveTab('twitter')}
-              className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
-                activeTab === 'twitter'
+              className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${activeTab === 'twitter'
                   ? 'border-blue-600 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
+                }`}
             >
               Twitter Trends (Sports India)
             </button>
@@ -137,43 +163,71 @@ function GoogleTrendsWidget() {
             {currentTopics.map((topic, index) => (
               <div
                 key={index}
-                className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow"
+                onClick={() => handleTopicClick(topic)}
+                className={`bg-white rounded-lg border border-gray-200 p-4 transition-all relative ${fetchingTopic === topic ? 'opacity-70 cursor-wait' : 'hover:shadow-md cursor-pointer hover:border-blue-300'
+                  }`}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
-                      <span className={`text-xs font-bold px-2 py-1 rounded ${
-                        activeTab === 'google' 
-                          ? 'text-blue-600 bg-blue-100' 
+                      <span className={`text-xs font-bold px-2 py-1 rounded ${activeTab === 'google'
+                          ? 'text-blue-600 bg-blue-100'
                           : 'text-sky-600 bg-sky-100'
-                      }`}>
+                        }`}>
                         #{index + 1}
                       </span>
                       <span className="text-xs text-gray-500">Trending</span>
                     </div>
                     <h3 className="font-semibold text-gray-900 mb-1">{topic}</h3>
+
+                    {fetchSuccess === topic && (
+                      <div className="flex items-center gap-1 text-green-600 text-xs font-medium mt-1">
+                        <FiCheckCircle size={12} />
+                        <span>Articles fetched!</span>
+                      </div>
+                    )}
+
+                    {(fetchingTopic === topic) && (
+                      <div className="flex items-center gap-1 text-blue-600 text-xs font-medium mt-1">
+                        <FiRefreshCw className="animate-spin" size={12} />
+                        <span>Fetching articles...</span>
+                      </div>
+                    )}
+
                   </div>
-                  {activeTab === 'google' ? (
-                    <a
-                      href={`https://trends.google.com/trends/explore?q=${encodeURIComponent(topic)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:text-blue-700 flex-shrink-0"
-                      title="View on Google Trends"
+
+                  <div className="flex flex-col items-center gap-2">
+                    {activeTab === 'google' ? (
+                      <a
+                        href={`https://trends.google.com/trends/explore?q=${encodeURIComponent(topic)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-blue-600 hover:text-blue-700 flex-shrink-0 p-1 hover:bg-blue-50 rounded"
+                        title="View on Google Trends"
+                      >
+                        <FiExternalLink size={16} />
+                      </a>
+                    ) : (
+                      <a
+                        href={`https://twitter.com/search?q=${encodeURIComponent(topic)}&src=trend_click`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-sky-600 hover:text-sky-700 flex-shrink-0 p-1 hover:bg-sky-50 rounded"
+                        title="View on Twitter"
+                      >
+                        <FiExternalLink size={16} />
+                      </a>
+                    )}
+
+                    <button
+                      className="text-gray-400 hover:text-green-600 p-1 hover:bg-green-50 rounded transition-colors"
+                      title="Fetch articles for this topic"
                     >
-                      <FiExternalLink size={16} />
-                    </a>
-                  ) : (
-                    <a
-                      href={`https://twitter.com/search?q=${encodeURIComponent(topic)}&src=trend_click`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sky-600 hover:text-sky-700 flex-shrink-0"
-                      title="View on Twitter"
-                    >
-                      <FiExternalLink size={16} />
-                    </a>
-                  )}
+                      <FiPlusCircle size={16} />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}

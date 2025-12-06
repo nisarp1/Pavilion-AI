@@ -503,7 +503,7 @@ function ArticleList() {
       </div>
 
       {/* Google Trends Widget - Show only on Trends tab */}
-      {activeTab === 'trends' && <GoogleTrendsWidget />}
+      {activeTab === 'trends' && <GoogleTrendsWidget onArticleCreated={refreshList} />}
 
       {/* Bulk Actions Bar */}
       {selectedArticles.size > 0 && (
