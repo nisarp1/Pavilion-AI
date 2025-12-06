@@ -1487,14 +1487,27 @@ def _fetch_articles_for_topic_task(topic):
         from urllib.parse import quote_plus
         encoded_topic = quote_plus(topic)
         # q={topic}+sports ensures we get sports context
-        # when:1d ensures freshness
+        # when:24h ensures freshness
         google_news_url = f"https://news.google.com/rss/search?q={encoded_topic}+sports+when:24h&hl=en&gl=IN&ceid=IN:en"
         
-        feed = feedparser.parse(google_news_url)
+        # Use requests with User-Agent to avoid 403/Blocking
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/rss+xml, application/xml, */*'
+        }
         
-        if feed.bozo:
-            logger.warning(f"Feed parsing issues for {topic}: {feed.bozo_exception}")
+        response = requests.get(google_news_url, headers=headers, timeout=10)
+        
+        if response.status_code != 200:
+            logger.error(f"Google News returned status {response.status_code}")
+            return {'success': False, 'error': f"Google News API returned {response.status_code}"}
             
+        feed = feedparser.parse(response.content)
+        
+        if not feed.entries:
+             logger.warning(f"No entries found for topic: {topic}")
+             return {'success': False, 'error': "No recent articles found for this topic."}
+             
         # We only want the top 3 most relevant (RSS is usually sorted by relevance/date)
         for entry in feed.entries[:3]:
             try:
@@ -1558,6 +1571,10 @@ def _fetch_articles_for_topic_task(topic):
     except Exception as e:
         logger.error(f"Error in on-demand fetch: {e}")
         return {'success': False, 'error': str(e)}
+
+    # If we have created articles OR found existing ones, it's a success
+    if articles_created == 0 and len(created_articles) == 0:
+         return {'success': False, 'error': "No relevant articles could be saved."}
 
     return {
         'success': True,
