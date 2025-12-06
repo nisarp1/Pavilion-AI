@@ -828,126 +828,15 @@ def _get_twitter_trends_sports_india():
     """
     logger.info("Fetching Twitter-like trends for sports in India")
     
-    trending_topics = []
+    # Use the new robust strategy (Trends24 + AI)
+    trends = _get_trends24_sports_trends()
     
-    # Strategy 1: Get Google Trends RSS for India (Sports category = 17)
-    # This is the BEST source for actual trending sports topics that people are searching/tweeting about
-    try:
-        logger.info("Fetching Google Trends RSS for Sports category in India (category=17)...")
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/rss+xml, application/xml, */*',
-            'Accept-Language': 'en-US,en;q=0.9',
-        }
+    if trends:
+        logger.info(f"Returning {len(trends)} trends from Trends24+AI")
+        return trends
         
-        # Google Trends RSS for Sports category in India (category=17)
-        # This gives us the ACTUAL trending sports topics from Google Trends
-        rss_url = 'https://trends.google.com/trends/trendingsearches/daily/rss?geo=IN&category=17'
-        
-        response = requests.get(rss_url, headers=headers, timeout=15)
-        if response.status_code == 200 and response.content:
-            feed = feedparser.parse(response.content)
-            if hasattr(feed, 'entries') and feed.entries:
-                logger.info(f"Found {len(feed.entries)} sports trending entries from Google Trends RSS")
-                for entry in feed.entries[:15]:
-                    title = entry.get('title', '').strip()
-                    # Clean up title - remove common prefixes like "Google Trends - " or "Trending - "
-                    title = re.sub(r'^(Google Trends|Trending|Trends)\s*[-:]\s*', '', title, flags=re.IGNORECASE)
-                    title = title.strip()
-                    
-                    if title and len(title) > 3 and len(title) < 100:
-                        if title not in trending_topics:
-                            trending_topics.append(title)
-                            logger.info(f"Found sports trending topic from Google Trends RSS: {title}")
-                
-                if len(trending_topics) >= 5:
-                    logger.info(f"Found {len(trending_topics)} sports trending topics from Google Trends RSS")
-                    return trending_topics[:10]
-        else:
-            logger.warning(f"Google Trends RSS returned status {response.status_code}")
-    except Exception as e:
-        logger.debug(f"Google Trends RSS failed: {str(e)}")
-    
-    # Strategy 2: Try Google Trends RSS for all categories (as fallback, then filter for sports)
-    try:
-        logger.info("Trying Google Trends RSS for all categories (will filter sports)...")
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/rss+xml, application/xml, */*',
-            'Accept-Language': 'en-US,en;q=0.9',
-        }
-        
-        rss_url = 'https://trends.google.com/trends/trendingsearches/daily/rss?geo=IN'
-        sports_keywords = ['cricket', 'football', 'soccer', 'ipl', 'premier', 'league', 'match', 'sport', 'world cup', 'championship', 'tournament', 'team', 'player', 'goal', 'wicket', 'run', 'score', 'bcci', 'kohli', 'dhoni', 'messi', 'ronaldo']
-        
-        response = requests.get(rss_url, headers=headers, timeout=15)
-        if response.status_code == 200 and response.content:
-            feed = feedparser.parse(response.content)
-            if hasattr(feed, 'entries') and feed.entries:
-                logger.info(f"Found {len(feed.entries)} trending entries from Google Trends RSS")
-                for entry in feed.entries[:25]:
-                    title = entry.get('title', '').strip()
-                    title = re.sub(r'^(Google Trends|Trending|Trends)\s*[-:]\s*', '', title, flags=re.IGNORECASE)
-                    title = title.strip()
-                    
-                    if title and len(title) > 3 and len(title) < 100:
-                        title_lower = title.lower()
-                        # Filter for sports-related only
-                        if any(keyword in title_lower for keyword in sports_keywords):
-                            if title not in trending_topics:
-                                trending_topics.append(title)
-                                logger.info(f"Found sports trending topic: {title}")
-                
-                if len(trending_topics) >= 5:
-                    logger.info(f"Found {len(trending_topics)} sports trending topics from Google Trends RSS (filtered)")
-                    return trending_topics[:10]
-    except Exception as e:
-        logger.debug(f"Google Trends RSS (all categories) failed: {str(e)}")
-    
-    # Strategy 3: Try NewsAPI for top sports headlines in India (most recent/popular)
-    try:
-        newsapi_key = getattr(settings, 'NEWS_API_KEY', None)
-        if newsapi_key:
-            logger.info("Trying NewsAPI for top sports headlines in India...")
-            
-            newsapi_url = 'https://newsapi.org/v2/top-headlines'
-            params = {
-                'category': 'sports',
-                'country': 'in',
-                'pageSize': 15,
-                'apiKey': newsapi_key
-            }
-            
-            response = requests.get(newsapi_url, params=params, timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                articles = data.get('articles', [])
-                
-                for article in articles[:15]:
-                    title = article.get('title', '').strip()
-                    if title:
-                        # Clean up title - remove source prefixes
-                        title = re.sub(r'^[^-]+-\s*', '', title)
-                        title = re.sub(r'\s*-\s*[^-]+$', '', title)
-                        title = title.strip()
-                        
-                        if title and len(title) > 5 and len(title) < 80:
-                            if title not in trending_topics:
-                                trending_topics.append(title)
-                                logger.info(f"Found trending topic from NewsAPI: {title}")
-                
-                if len(trending_topics) >= 5:
-                    logger.info(f"Found {len(trending_topics)} trending topics from NewsAPI")
-                    return trending_topics[:10]
-    except Exception as e:
-        logger.debug(f"NewsAPI failed: {str(e)}")
-    
-    if trending_topics:
-        logger.info(f"Found {len(trending_topics)} trending topics from alternative sources")
-        return trending_topics[:10]
-    
-    # Final fallback
-    logger.warning("No trending topics found from alternative sources, returning fallback topics")
+    # Only if that fails, return fallback
+    logger.warning("Trends24/AI failed, returning generic fallback")
     return _get_twitter_fallback_trends()
 
 
