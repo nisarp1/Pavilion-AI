@@ -357,7 +357,14 @@ def generate_article_with_gemini(article, mode='core'):
         original_summary = article.summary if article.summary and article.summary.strip() else "No summary provided"
         
         # Main prompt for generating complete Malayalam article
-        if 'google.com/search' in article.source_url or 'search?' in article.source_url or article.source_feed == 'Trends Stub':
+        # Check for Stub/Search indications
+        is_stub = (
+            'google.com/search' in (article.source_url or '') or 
+            'search?' in (article.source_url or '') or 
+            article.source_feed == 'Trends Stub'
+        )
+        
+        if is_stub:
              # RESEARCH MODE for Stubs: Use DuckDuckGo to get REAL facts
              topic = article.title.replace(': Latest Updates', '').replace(': Latest News', '')
              logger.info(f"Researching topic '{topic}' using DuckDuckGo...")
@@ -365,8 +372,10 @@ def generate_article_with_gemini(article, mode='core'):
              search_context = ""
              try:
                  from duckduckgo_search import DDGS
+                 # Use a context manager to ensure clean session handling
                  with DDGS() as ddgs:
                      # Search for news related to the topic
+                     # Search query optimized for news
                      results = list(ddgs.text(f"{topic} news india sports", max_results=5))
                      if results:
                          search_context = "HERE ARE THE LATEST REAL-WORLD SEARCH RESULTS (USE THESE FACTS ONLY):\n\n"
@@ -374,11 +383,13 @@ def generate_article_with_gemini(article, mode='core'):
                              search_context += f"Source {i+1}: {res.get('title')}\nSummary: {res.get('body')}\nLink: {res.get('href')}\n\n"
                          logger.info(f"Fetched {len(results)} search results for context.")
                      else:
-                         search_context = "No direct search results found. Please rely on general knowledge but be cautious."
+                         search_context = f"No direct search results found for '{topic}'. RELY ON YOUR INTERNAL KNOWLEDGE about {topic}."
              except Exception as e:
                  logger.error(f"DuckDuckGo search failed: {e}")
-                 search_context = "Search failed. Please generate a general report about this entity."
+                 search_context = f"Search failed. RELY ON YOUR INTERNAL KNOWLEDGE about {topic}."
 
+             # CRITICAL: If context is empty/failed, we must explicitly tell Gemini what to write about
+             # to prevent it defaulting to 'Google Chrome' assignments.
              prompt = f"""You are a professional news editor. I need you to write a FACTUAL BREAKING NEWS article in Malayalam about: "{topic}".
              
              {search_context}
@@ -387,7 +398,7 @@ def generate_article_with_gemini(article, mode='core'):
              1. SYNTHESIZE the search results above into a coherent news report.
              2. FACTS FIRST: Use the specific names, scores, dates, and events mentioned in the search results.
              3. If the search results mention a specific event (like an inauguration, a match win, or a statement), make that the headline story.
-             4. DO NOT hallucinate. If the search results provided above contradict your internal knowledge, PREFER THE SEARCH RESULTS as they are more recent.
+             4. DO NOT hallucinate. If search results are missing, write a generic profile or update about "{topic}" based on your training data, BUT DO NOT switch topics entirely.
              5. Write in professional Malayalam editorial style.
              
              REQUIRED OUTPUT FORMAT (provide as JSON):
@@ -405,6 +416,7 @@ def generate_article_with_gemini(article, mode='core'):
                  "og_description": "Social Description"
              }}
              """
+             logger.info(f"Generated Prompt for Stub (Topic: {topic})")
         else:
             # STANDARD MODE for normal articles
             prompt = f"""You are a professional Malayalam content writer and editor for a news/editorial website. Based on the following English article information, create a complete, localized Malayalam article.
