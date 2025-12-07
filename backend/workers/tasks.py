@@ -357,49 +357,80 @@ def generate_article_with_gemini(article, mode='core'):
         original_summary = article.summary if article.summary and article.summary.strip() else "No summary provided"
         
         # Main prompt for generating complete Malayalam article
-        prompt = f"""You are a professional Malayalam content writer and editor for a news/editorial website. Based on the following English article information, create a complete, localized Malayalam article.
-
-ORIGINAL ENGLISH TITLE: {original_title}
-
-ORIGINAL ENGLISH SUMMARY: {original_summary}
-
-SOURCE URL: {article.source_url if article.source_url else 'Not available'}
-
-IMPORTANT INSTRUCTIONS:
-1. DO NOT provide a plain translation. Instead, rewrite the article in authentic Malayalam editorial style
-2. Use professional, editorial, and authentic Malayalam language and tone
-3. Localize the content - adapt it for Malayalam-speaking readers while maintaining editorial authenticity
-4. Use appropriate Malayalam vocabulary, expressions, and cultural context
-5. Maintain journalistic standards and editorial voice
-
-REQUIRED OUTPUT FORMAT (provide as JSON):
-{{
-    "title_malayalam": "Malayalam title (professional, editorial style)",
-    "summary_malayalam": "Malayalam summary (2-3 sentences, professional editorial tone)",
-    "summary_english": "English summary (2-3 sentences)",
-    "body_malayalam": "Full article body in Malayalam (4-5 paragraphs in HTML format with <p> tags)",
-    "instagram_reel_script": "Thoughtful and engaging Instagram Reel script (voiceover type) in Malayalam. Conversational, engaging, and summarizes the key points. Approx 30-60 seconds when read aloud.",
-    "social_media_poster_text": "Short, punchy Malayalam text for a poster image (2-5 words, very catchy)",
-    "social_media_caption": "Engaging Malayalam caption for social media (Facebook/Instagram) with relevant hashtags",
-    "meta_title": "SEO meta title in Malayalam (60-70 characters)",
-    "meta_description": "SEO meta description in Malayalam (150-160 characters)",
-    "og_title": "OG title in Malayalam (60-70 characters)",
-    "og_description": "OG description in Malayalam (200 characters max)"
-}}
-
-BODY REQUIREMENTS:
-- Write 4-5 substantial paragraphs (each 3-5 sentences)
-- Use HTML format with <p> tags only (no headings unless absolutely necessary)
-- Professional editorial tone - like a quality Malayalam news editorial
-- Engaging introduction, detailed body paragraphs, and strong conclusion
-- Localized yet authentic Malayalam - should read like original Malayalam journalism, not translation
-
-REEL SCRIPT REQUIREMENTS:
-- Engaging, conversational tone suitable for social media
-- Hook the viewer in the first 3 seconds
-- Summarize the main story quickly and interestingly
-- End with a call to action (e.g., "Read more strictly on our website")
-"""
+        if 'google.com/search' in article.source_url or 'search?' in article.source_url or article.source_feed == 'Trends Stub':
+             # RESEARCH MODE for Stubs
+             topic = article.title.replace(': Latest Updates', '').replace(': Latest News', '')
+             prompt = f"""You are a professional news editor. I need you to research and write a BREAKING NEWS article in Malayalam about the topic: "{topic}".
+             
+             Since I cannot provide the full source text, you must:
+             1. RECALL the most recent real-world events regarding "{topic}" (especially sports/cricket news from the last 24-48 hours).
+             2. If "Ambati Rayudu" or "Cricket Academy" is related, focus on that.
+             3. GENERATE a factual, news-style article in Malayalam based on your knowledge of recent events.
+             4. DO NOT hallucinate a generic essay. Write about specific recent events (scores, inaugurations, matches, statements).
+             
+             TOPIC: {topic}
+             CONTEXT: Recent Sports/News Trends
+             
+             REQUIRED OUTPUT FORMAT (provide as JSON):
+             {{
+                 "title_malayalam": "A specific, catchy headline about the recent event in Malayalam",
+                 "summary_malayalam": "2-3 sentences summarizing the specific news event",
+                 "summary_english": "2-3 sentences summarizing the event in English",
+                 "body_malayalam": "Full detailed news report in Malayalam (4-5 paragraphs, HTML <p> tags). Include specific names, places, and context.",
+                 "instagram_reel_script": "Engaging 30s script for Instagram Reel about this specific news",
+                 "social_media_poster_text": "Catchy 3-4 word title for poster",
+                 "social_media_caption": "Caption with hashtags",
+                 "meta_title": "SEO Title",
+                 "meta_description": "SEO Description",
+                 "og_title": "Social Title",
+                 "og_description": "Social Description"
+             }}
+             """
+        else:
+            # STANDARD MODE for normal articles
+            prompt = f"""You are a professional Malayalam content writer and editor for a news/editorial website. Based on the following English article information, create a complete, localized Malayalam article.
+    
+    ORIGINAL ENGLISH TITLE: {original_title}
+    
+    ORIGINAL ENGLISH SUMMARY: {original_summary}
+    
+    SOURCE URL: {article.source_url if article.source_url else 'Not available'}
+    
+    IMPORTANT INSTRUCTIONS:
+    1. DO NOT provide a plain translation. Instead, rewrite the article in authentic Malayalam editorial style
+    2. Use professional, editorial, and authentic Malayalam language and tone
+    3. Localize the content - adapt it for Malayalam-speaking readers while maintaining editorial authenticity
+    4. Use appropriate Malayalam vocabulary, expressions, and cultural context
+    5. Maintain journalistic standards and editorial voice
+    
+    REQUIRED OUTPUT FORMAT (provide as JSON):
+    {{
+        "title_malayalam": "Malayalam title (professional, editorial style)",
+        "summary_malayalam": "Malayalam summary (2-3 sentences, professional editorial tone)",
+        "summary_english": "English summary (2-3 sentences)",
+        "body_malayalam": "Full article body in Malayalam (4-5 paragraphs in HTML format with <p> tags)",
+        "instagram_reel_script": "Thoughtful and engaging Instagram Reel script (voiceover type) in Malayalam. Conversational, engaging, and summarizes the key points. Approx 30-60 seconds when read aloud.",
+        "social_media_poster_text": "Short, punchy Malayalam text for a poster image (2-5 words, very catchy)",
+        "social_media_caption": "Engaging Malayalam caption for social media (Facebook/Instagram) with relevant hashtags",
+        "meta_title": "SEO meta title in Malayalam (60-70 characters)",
+        "meta_description": "SEO meta description in Malayalam (150-160 characters)",
+        "og_title": "OG title in Malayalam (60-70 characters)",
+        "og_description": "OG description in Malayalam (200 characters max)"
+    }}
+    
+    BODY REQUIREMENTS:
+    - Write 4-5 substantial paragraphs (each 3-5 sentences)
+    - Use HTML format with <p> tags only (no headings unless absolutely necessary)
+    - Professional editorial tone - like a quality Malayalam news editorial
+    - Engaging introduction, detailed body paragraphs, and strong conclusion
+    - Localized yet authentic Malayalam - should read like original Malayalam journalism, not translation
+    
+    REEL SCRIPT REQUIREMENTS:
+    - Engaging, conversational tone suitable for social media
+    - Hook the viewer in the first 3 seconds
+    - Summarize the main story quickly and interestingly
+    - End with a call to action (e.g., "Read more strictly on our website")
+    """
 
         prompt += "\nReturn the JSON response with all fields filled."
 
