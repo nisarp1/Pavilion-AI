@@ -1625,18 +1625,18 @@ def _fetch_articles_for_topic_task(topic):
                  slug = f"{base_slug}-{counter}"
                  counter += 1
              # Create a "Stub Article" so the user sees something in the list
-            # We use the Human-Readable News URL so clicking "View Source" goes to the News tab
-            stub_article = Article.objects.create(
-                title=f"{topic}: Latest Updates",
-                slug=slugify(f"{topic}-latest-updates-{timezone.now().strftime('%Y%m%d-%H%M')}"),
-                summary=f"Automated stub for trending topic: {topic}. Click Generate to fetch real content.",
-                source="Google Trends",
-                source_url=human_news_url, # Use the specific News Search URL
-                source_feed="Trends Stub",
-                is_featured=False,
-                status='stub',  # New status for these empty placeholders
-                published_at=timezone.now()
-            )
+             # We use the Human-Readable News URL so clicking "View Source" goes to the News tab
+             stub_article = Article.objects.create(
+                 title=f"{topic}: Latest Updates",
+                 slug=slugify(f"{topic}-latest-updates-{timezone.now().strftime('%Y%m%d-%H%M')}"),
+                 summary=f"Automated stub for trending topic: {topic}. Click Generate to fetch real content.",
+                 source="Google Trends",
+                 source_url=human_news_url, # Use the specific News Search URL
+                 source_feed="Trends Stub",
+                 is_featured=False,
+                 status='stub',  # New status for these empty placeholders
+                 published_at=timezone.now()
+             )
              articles_created += 1
              created_articles.append(stub_article)
          except Exception as ex:
