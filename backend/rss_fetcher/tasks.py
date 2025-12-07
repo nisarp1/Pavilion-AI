@@ -1488,12 +1488,14 @@ def _fetch_articles_for_topic_task(topic):
     articles_created = 0
     created_articles = []
     
+    # Pre-calculate URLs for use in logic and fallbacks
+    from urllib.parse import quote_plus
+    encoded_topic = quote_plus(topic)
+    # Human-Readable Link to Google News Tab (for clickable source)
+    human_news_url = f"https://www.google.com/search?q={encoded_topic}+sports&tbm=nws&tbs=qdr:d"
+    
     try:
-        # URL encode the topic
-        from urllib.parse import quote_plus
-        encoded_topic = quote_plus(topic)
-        # q={topic}+sports ensures we get sports context
-        # when:24h ensures freshness
+        # RSS Feed URL (machine readable)
         google_news_url = f"https://news.google.com/rss/search?q={encoded_topic}+sports+when:24h&hl=en&gl=IN&ceid=IN:en"
         
         # Use requests with User-Agent to avoid 403/Blocking
