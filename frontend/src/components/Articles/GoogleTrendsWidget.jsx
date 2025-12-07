@@ -59,6 +59,10 @@ function GoogleTrendsWidget({ onArticleCreated }) {
         }
         // Clear success message after 3 seconds
         setTimeout(() => setFetchSuccess(null), 3000)
+      } else {
+        // Handle case where API returns 200 but explicitly says success: false
+        const errorMsg = response.data.error || "Failed to fetch articles (Unknown error)."
+        alert(errorMsg)
       }
     } catch (err) {
       console.error("Error fetching articles for topic:", err)
