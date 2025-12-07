@@ -358,25 +358,44 @@ def generate_article_with_gemini(article, mode='core'):
         
         # Main prompt for generating complete Malayalam article
         if 'google.com/search' in article.source_url or 'search?' in article.source_url or article.source_feed == 'Trends Stub':
-             # RESEARCH MODE for Stubs
+             # RESEARCH MODE for Stubs: Use DuckDuckGo to get REAL facts
              topic = article.title.replace(': Latest Updates', '').replace(': Latest News', '')
-             prompt = f"""You are a professional news editor. I need you to research and write a BREAKING NEWS article in Malayalam about the topic: "{topic}".
+             logger.info(f"Researching topic '{topic}' using DuckDuckGo...")
              
-             Since I cannot provide the full source text, you must:
-             1. RECALL the most recent real-world events regarding "{topic}" (especially sports/cricket news from the last 24-48 hours).
-             2. If "Ambati Rayudu" or "Cricket Academy" is related, focus on that.
-             3. GENERATE a factual, news-style article in Malayalam based on your knowledge of recent events.
-             4. DO NOT hallucinate a generic essay. Write about specific recent events (scores, inaugurations, matches, statements).
+             search_context = ""
+             try:
+                 from duckduckgo_search import DDGS
+                 with DDGS() as ddgs:
+                     # Search for news related to the topic
+                     results = list(ddgs.text(f"{topic} news india sports", max_results=5))
+                     if results:
+                         search_context = "HERE ARE THE LATEST REAL-WORLD SEARCH RESULTS (USE THESE FACTS ONLY):\n\n"
+                         for i, res in enumerate(results):
+                             search_context += f"Source {i+1}: {res.get('title')}\nSummary: {res.get('body')}\nLink: {res.get('href')}\n\n"
+                         logger.info(f"Fetched {len(results)} search results for context.")
+                     else:
+                         search_context = "No direct search results found. Please rely on general knowledge but be cautious."
+             except Exception as e:
+                 logger.error(f"DuckDuckGo search failed: {e}")
+                 search_context = "Search failed. Please generate a general report about this entity."
+
+             prompt = f"""You are a professional news editor. I need you to write a FACTUAL BREAKING NEWS article in Malayalam about: "{topic}".
              
-             TOPIC: {topic}
-             CONTEXT: Recent Sports/News Trends
+             {search_context}
+             
+             INSTRUCTIONS:
+             1. SYNTHESIZE the search results above into a coherent news report.
+             2. FACTS FIRST: Use the specific names, scores, dates, and events mentioned in the search results.
+             3. If the search results mention a specific event (like an inauguration, a match win, or a statement), make that the headline story.
+             4. DO NOT hallucinate. If the search results provided above contradict your internal knowledge, PREFER THE SEARCH RESULTS as they are more recent.
+             5. Write in professional Malayalam editorial style.
              
              REQUIRED OUTPUT FORMAT (provide as JSON):
              {{
-                 "title_malayalam": "A specific, catchy headline about the recent event in Malayalam",
-                 "summary_malayalam": "2-3 sentences summarizing the specific news event",
-                 "summary_english": "2-3 sentences summarizing the event in English",
-                 "body_malayalam": "Full detailed news report in Malayalam (4-5 paragraphs, HTML <p> tags). Include specific names, places, and context.",
+                 "title_malayalam": "Specific, factual headline based on the search results",
+                 "summary_malayalam": "2-3 sentences summarizing the key facts found",
+                 "summary_english": "2-3 sentences summarizing the facts in English",
+                 "body_malayalam": "Full detailed news report in Malayalam (4-5 paragraphs, HTML <p> tags). Cite the specific events mentioned.",
                  "instagram_reel_script": "Engaging 30s script for Instagram Reel about this specific news",
                  "social_media_poster_text": "Catchy 3-4 word title for poster",
                  "social_media_caption": "Caption with hashtags",
