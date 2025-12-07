@@ -370,6 +370,8 @@ def generate_article_with_gemini(article, mode='core'):
              logger.info(f"Researching topic '{topic}' using DuckDuckGo...")
              
              search_context = ""
+             source_links_html = ""
+             
              try:
                  from duckduckgo_search import DDGS
                  # Use a context manager to ensure clean session handling
@@ -404,12 +406,16 @@ def generate_article_with_gemini(article, mode='core'):
 
                      if results:
                          search_context = "HERE ARE THE LATEST REAL-WORLD NEWS RESULTS (USE THESE FACTS ONLY):\n\n"
+                         source_links_html = "<h3>Sources:</h3><ul>"
                          for i, res in enumerate(results):
                              # Validating result quality: Skip results with 'Yahoo Japan' or 'transit'
                              if 'yahoo' in res.get('href', '').lower() and 'transit' in res.get('body', '').lower():
                                  continue
                                  
                              search_context += f"Source {i+1}: {res.get('title')}\nSummary: {res.get('body')}\nLink: {res.get('href')}\n\n"
+                             source_links_html += f"<li><a href='{res.get('href')}' target='_blank'>{res.get('title')}</a></li>"
+                         
+                         source_links_html += "</ul>"
                          logger.info(f"Fetched {len(results)} search results for context.")
                      else:
                          search_context = f"No direct search results found for '{topic}'. RELY ON YOUR INTERNAL KNOWLEDGE about {topic}."
@@ -435,7 +441,7 @@ def generate_article_with_gemini(article, mode='core'):
                  "title_malayalam": "Specific, factual headline about the LATEST EVENT (e.g. Winner Name / Score / Incident)",
                  "summary_malayalam": "2-3 sentences summarizing the specific result/incident",
                  "summary_english": "2-3 sentences summarizing the result in English",
-                 "body_malayalam": "Full detailed news report in Malayalam (4-5 paragraphs, HTML <p> tags). Focus on the Match/Race details/Incidents.",
+                 "body_malayalam": "Full detailed news report in Malayalam (4-5 paragraphs, HTML <p> tags). Focus on the Match/Race details/Incidents. IMPORTANT: Do NOT include links here. I will append them automatically.",
                  "instagram_reel_script": "Engaging 30s script for Instagram Reel about this specific news",
                  "social_media_poster_text": "Catchy 3-4 word title for poster",
                  "social_media_caption": "Caption with hashtags",
@@ -448,6 +454,7 @@ def generate_article_with_gemini(article, mode='core'):
              logger.info(f"Generated Prompt for Stub (Topic: {topic})")
         else:
             # STANDARD MODE for normal articles
+            source_links_html = "" # No dynamic sources for standard RSS fetch (passed source_url is enough)
             prompt = f"""You are a professional Malayalam content writer and editor for a news/editorial website. Based on the following English article information, create a complete, localized Malayalam article.
     
     ORIGINAL ENGLISH TITLE: {original_title}
@@ -962,7 +969,13 @@ def _generate_article_task_impl(article_id):
                 article.title = generated_content.get('title_malayalam', article.title)
                 article.summary = generated_content.get('summary_malayalam', article.summary)
                 article.summary_english = generated_content.get('summary_english', '')
-                article.body = generated_content.get('body_malayalam', '')
+                
+                # Append source links to body if available (from Stub Research)
+                body_content = generated_content.get('body_malayalam', '')
+                if 'source_links_html' in locals() and source_links_html:
+                    body_content += f"\n<hr>{source_links_html}"
+                
+                article.body = body_content
                 article.instagram_reel_script = generated_content.get('instagram_reel_script', '')
                 article.social_media_poster_text = generated_content.get('social_media_poster_text', '')
                 article.social_media_caption = generated_content.get('social_media_caption', '')
