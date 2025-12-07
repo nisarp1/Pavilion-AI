@@ -374,11 +374,16 @@ def generate_article_with_gemini(article, mode='core'):
                  from duckduckgo_search import DDGS
                  # Use a context manager to ensure clean session handling
                  with DDGS() as ddgs:
-                     # Search for news related to the topic
-                     # Search query optimized for news
-                     results = list(ddgs.text(f"{topic} news india sports", max_results=5))
+                     # CRITICAL UPDATE: Use 'news' search specifically, or 'text' with strict time/news filters
+                     # We specifically want result from the last day ideally
+                     results = list(ddgs.text(f"{topic} latest news", region="in-en", max_results=5, timelimit="d"))
+                     
+                     if not results:
+                         # Fallback to broader search if 'd' (day) yields nothing
+                         results = list(ddgs.text(f"{topic} news", region="in-en", max_results=5))
+
                      if results:
-                         search_context = "HERE ARE THE LATEST REAL-WORLD SEARCH RESULTS (USE THESE FACTS ONLY):\n\n"
+                         search_context = "HERE ARE THE LATEST REAL-WORLD NEWS RESULTS (USE THESE FACTS ONLY):\n\n"
                          for i, res in enumerate(results):
                              search_context += f"Source {i+1}: {res.get('title')}\nSummary: {res.get('body')}\nLink: {res.get('href')}\n\n"
                          logger.info(f"Fetched {len(results)} search results for context.")
@@ -388,25 +393,24 @@ def generate_article_with_gemini(article, mode='core'):
                  logger.error(f"DuckDuckGo search failed: {e}")
                  search_context = f"Search failed. RELY ON YOUR INTERNAL KNOWLEDGE about {topic}."
 
-             # CRITICAL: If context is empty/failed, we must explicitly tell Gemini what to write about
-             # to prevent it defaulting to 'Google Chrome' assignments.
+             # CRITICAL: Prompt Engineering to force News style over Wiki style
              prompt = f"""You are a professional news editor. I need you to write a FACTUAL BREAKING NEWS article in Malayalam about: "{topic}".
              
              {search_context}
              
              INSTRUCTIONS:
-             1. SYNTHESIZE the search results above into a coherent news report.
-             2. FACTS FIRST: Use the specific names, scores, dates, and events mentioned in the search results.
-             3. If the search results mention a specific event (like an inauguration, a match win, or a statement), make that the headline story.
-             4. DO NOT hallucinate. If search results are missing, write a generic profile or update about "{topic}" based on your training data, BUT DO NOT switch topics entirely.
+             1. RECENT NEWS ONLY: Do NOT write a general wikipedia-style essay about what the event "is". Write about WHAT JUST HAPPENED.
+             2. SPECIFIC FACTS: Use specific names (winners, scores), times, and outcomes from the search results above.
+             3. If the search results say "Lando Norris wins title", your headline MUST be about Lando Norris winning, NOT about "What is Abu Dhabi GP".
+             4. NO HALLUCINATIONS: If search results are missing, cite the most likely recent outcome based on your training, but prefer the provided context.
              5. Write in professional Malayalam editorial style.
              
              REQUIRED OUTPUT FORMAT (provide as JSON):
              {{
-                 "title_malayalam": "Specific, factual headline based on the search results",
-                 "summary_malayalam": "2-3 sentences summarizing the key facts found",
-                 "summary_english": "2-3 sentences summarizing the facts in English",
-                 "body_malayalam": "Full detailed news report in Malayalam (4-5 paragraphs, HTML <p> tags). Cite the specific events mentioned.",
+                 "title_malayalam": "Specific, factual headline about the LATEST EVENT (e.g. Winner Name / Score)",
+                 "summary_malayalam": "2-3 sentences summarizing the specific result",
+                 "summary_english": "2-3 sentences summarizing the result in English",
+                 "body_malayalam": "Full detailed news report in Malayalam (4-5 paragraphs, HTML <p> tags). Focus on the Match/Race details, not history.",
                  "instagram_reel_script": "Engaging 30s script for Instagram Reel about this specific news",
                  "social_media_poster_text": "Catchy 3-4 word title for poster",
                  "social_media_caption": "Caption with hashtags",
