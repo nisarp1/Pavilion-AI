@@ -375,16 +375,27 @@ def generate_article_with_gemini(article, mode='core'):
                  # Use a context manager to ensure clean session handling
                  with DDGS() as ddgs:
                      # Refined Search Strategy:
-                     # 1. Broaden region (remove in-en) because sports news is global
-                     # 2. Use specific keywords like "latest news" and "today" to force freshness
-                     search_query = f"{topic} latest news sports"
+                     # 1. Use simple text search with "news" keyword (more reliable than strict news backend)
+                     # 2. Broaden region to catch global results
                      
-                     if 'virat' in topic.lower() or 'kohli' in topic.lower() or 'rohit' in topic.lower() or 'dhoni' in topic.lower():
-                         search_query = f"{topic} cricket news today"
-                     elif 'f1' in topic.lower() or 'verstappen' in topic.lower() or 'norris' in topic.lower():
-                         search_query = f"{topic} f1 race result today"
+                     base_query = topic
+                     if 'vs' not in topic.lower() and 'news' not in topic.lower():
+                         base_query = f"{topic} news"
                      
-                     # First try strictly 'news' backend if available via text search keywords
+                     # Specific overrides for better context
+                     if 'steve smith' in topic.lower():
+                         # Force cricket context
+                         search_query = f"Steve Smith cricket news latest"
+                     elif 'jofra' in topic.lower():
+                         search_query = f"Jofra Archer news latest"
+                     elif 'verstappen' in topic.lower():
+                         search_query = f"Max Verstappen f1 news latest"
+                     elif 'kohli' in topic.lower():
+                         search_query = f"Virat Kohli news latest"
+                     else:
+                         search_query = f"{base_query} latest"
+                     
+                     # First try very recent (day)
                      results = list(ddgs.text(search_query, max_results=5, timelimit="d"))
                      
                      if not results:
@@ -414,17 +425,17 @@ def generate_article_with_gemini(article, mode='core'):
              INSTRUCTIONS:
              1. RECENT NEWS ONLY: Do NOT write a general wikipedia-style essay about what the event "is". Write about WHAT JUST HAPPENED.
              2. SPECIFIC FACTS: Use specific names (winners, scores), times, and outcomes from the search results above.
-             3. If the search results say "Lando Norris wins title", your headline MUST be about Lando Norris winning, NOT about "What is Abu Dhabi GP".
+             3. If the search results say "Steve Smith fights Jofra Archer", your headline MUST be about that fight.
              4. NO HALLUCINATIONS: If search results are missing, cite the most likely recent outcome based on your training, but prefer the provided context.
-             5. IF CONTEXT IS IRRELEVANT (e.g. searching for Steve Smith finds Yahoo Transit): Ignore the bad context and write a general profile update about the person/topic based on your internal knowledge.
+             5. IF CONTEXT IS IRRELEVANT: Ignore the bad context and write a general profile update.
              6. Write in professional Malayalam editorial style.
              
              REQUIRED OUTPUT FORMAT (provide as JSON):
              {{
-                 "title_malayalam": "Specific, factual headline about the LATEST EVENT (e.g. Winner Name / Score)",
-                 "summary_malayalam": "2-3 sentences summarizing the specific result",
+                 "title_malayalam": "Specific, factual headline about the LATEST EVENT (e.g. Winner Name / Score / Incident)",
+                 "summary_malayalam": "2-3 sentences summarizing the specific result/incident",
                  "summary_english": "2-3 sentences summarizing the result in English",
-                 "body_malayalam": "Full detailed news report in Malayalam (4-5 paragraphs, HTML <p> tags). Focus on the Match/Race details, not history.",
+                 "body_malayalam": "Full detailed news report in Malayalam (4-5 paragraphs, HTML <p> tags). Focus on the Match/Race details/Incidents.",
                  "instagram_reel_script": "Engaging 30s script for Instagram Reel about this specific news",
                  "social_media_poster_text": "Catchy 3-4 word title for poster",
                  "social_media_caption": "Caption with hashtags",
