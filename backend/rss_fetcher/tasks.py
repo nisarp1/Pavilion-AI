@@ -1001,11 +1001,17 @@ def _fetch_articles_from_google_news(trending_topics):
             # Google News RSS feed URL
             # URL encode the topic
             from urllib.parse import quote_plus
+            # Construct Google News RSS URL (Best source for fetching)
+            # We use the RSS feed for fetching because it's machine-readable
             encoded_topic = quote_plus(topic)
-            google_news_url = f"https://news.google.com/rss/search?q={encoded_topic}+sports&hl=en&gl=IN&ceid=IN:en"
+            google_news_rss_url = f"https://news.google.com/rss/search?q={encoded_topic}+sports+when:24h&hl=en&gl=IN&ceid=IN:en"
             
+            # Construct Human-Readable News Search URL (for the 'source_url' field)
+            # This points to the 'News' tab (tbm=nws) which is what the user wants
+            human_news_url = f"https://www.google.com/search?q={encoded_topic}+sports&tbm=nws&tbs=qdr:d" # tbm=nws (News), tbs=qdr:d (Past 24h)
+
             logger.info(f"Fetching Google News RSS for topic: {topic}")
-            feed = feedparser.parse(google_news_url)
+            feed = feedparser.parse(google_news_rss_url)
             
             if feed.bozo:
                 logger.warning(f"Feed parsing issues for {topic}: {feed.bozo_exception}")
@@ -1618,17 +1624,19 @@ def _fetch_articles_for_topic_task(topic):
              while Article.objects.filter(slug=slug).exists():
                  slug = f"{base_slug}-{counter}"
                  counter += 1
-
-             stub_article = Article.objects.create(
-                title=stub_title,
-                slug=slug,
+             # Create a "Stub Article" so the user sees something in the list
+            # We use the Human-Readable News URL so clicking "View Source" goes to the News tab
+            stub_article = Article.objects.create(
+                title=f"{topic}: Latest Updates",
+                slug=slugify(f"{topic}-latest-updates-{timezone.now().strftime('%Y%m%d-%H%M')}"),
                 summary=f"Automated stub for trending topic: {topic}. Click Generate to fetch real content.",
-                status='fetched',
-                source_url=f"https://www.google.com/search?q={quote_plus(topic)}",
-                source_feed='Trends Stub',
-                category='trends',
-                trend_data={'trending_topic': topic, 'sport': 'Sports'}
-             )
+                source="Google Trends",
+                source_url=human_news_url, # Use the specific News Search URL
+                source_feed="Trends Stub",
+                is_featured=False,
+                status='stub',  # New status for these empty placeholders
+                published_at=timezone.now()
+            )
              articles_created += 1
              created_articles.append(stub_article)
          except Exception as ex:
