@@ -1634,7 +1634,7 @@ def _fetch_articles_for_topic_task(topic):
                  source_url=human_news_url, # Use the specific News Search URL
                  source_feed="Trends Stub",
                  is_featured=False,
-                 status='stub',  # New status for these empty placeholders
+                 status='fetched',  # Standard status for new RSS items
                  published_at=timezone.now()
              )
              articles_created += 1
