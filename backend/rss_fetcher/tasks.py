@@ -1632,11 +1632,13 @@ def _fetch_articles_for_topic_task(topic):
                  title=f"{topic}: Latest Updates",
                  slug=slugify(f"{topic}-latest-updates-{timezone.now().strftime('%Y%m%d-%H%M')}"),
                  summary=f"Automated stub for trending topic: {topic}. Click Generate to fetch real content.",
-                 source="Google Trends",
-                 source_url=human_news_url, # Use the specific News Search URL
+                 # source="Google Trends", # REMOVED: Field does not exist in model
+                 source_url=human_news_url, 
                  source_feed="Trends Stub",
-                 is_featured=False,
-                 status='fetched',  # Standard status for new RSS items
+                 # is_featured=False, # REMOVED: Field does not exist in model
+                 category='trends',
+                 trend_data={'trending_topic': topic, 'sport': 'Sports'},
+                 status='fetched',
                  published_at=timezone.now()
              )
              articles_created += 1
