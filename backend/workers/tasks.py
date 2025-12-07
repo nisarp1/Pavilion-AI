@@ -374,24 +374,30 @@ def generate_article_with_gemini(article, mode='core'):
                  from duckduckgo_search import DDGS
                  # Use a context manager to ensure clean session handling
                  with DDGS() as ddgs:
-                     # CRITICAL FIX for Ambiguous Topics (e.g., "Max" finding M4 Max chips instead of Max Verstappen)
-                     # We force "sports" context into the search query
-                     search_query = f"{topic} sports news india"
-                     if 'verstappen' in topic.lower():
-                         search_query = f"{topic} f1 news"
-                     elif 'cricket' in topic.lower():
-                         search_query = f"{topic} cricket news"
+                     # Refined Search Strategy:
+                     # 1. Broaden region (remove in-en) because sports news is global
+                     # 2. Use specific keywords like "latest news" and "today" to force freshness
+                     search_query = f"{topic} latest news sports"
                      
-                     # First try very recent news (day)
-                     results = list(ddgs.text(search_query, region="in-en", max_results=5, timelimit="d"))
+                     if 'virat' in topic.lower() or 'kohli' in topic.lower() or 'rohit' in topic.lower() or 'dhoni' in topic.lower():
+                         search_query = f"{topic} cricket news today"
+                     elif 'f1' in topic.lower() or 'verstappen' in topic.lower() or 'norris' in topic.lower():
+                         search_query = f"{topic} f1 race result today"
+                     
+                     # First try strictly 'news' backend if available via text search keywords
+                     results = list(ddgs.text(search_query, max_results=5, timelimit="d"))
                      
                      if not results:
-                         # Fallback to broader search (month)
-                         results = list(ddgs.text(search_query, region="in-en", max_results=5, timelimit="m"))
+                         # Fallback: Broaden time limit to week 'w'
+                         results = list(ddgs.text(search_query, max_results=5, timelimit="w"))
 
                      if results:
                          search_context = "HERE ARE THE LATEST REAL-WORLD NEWS RESULTS (USE THESE FACTS ONLY):\n\n"
                          for i, res in enumerate(results):
+                             # Validating result quality: Skip results with 'Yahoo Japan' or 'transit'
+                             if 'yahoo' in res.get('href', '').lower() and 'transit' in res.get('body', '').lower():
+                                 continue
+                                 
                              search_context += f"Source {i+1}: {res.get('title')}\nSummary: {res.get('body')}\nLink: {res.get('href')}\n\n"
                          logger.info(f"Fetched {len(results)} search results for context.")
                      else:
@@ -410,7 +416,8 @@ def generate_article_with_gemini(article, mode='core'):
              2. SPECIFIC FACTS: Use specific names (winners, scores), times, and outcomes from the search results above.
              3. If the search results say "Lando Norris wins title", your headline MUST be about Lando Norris winning, NOT about "What is Abu Dhabi GP".
              4. NO HALLUCINATIONS: If search results are missing, cite the most likely recent outcome based on your training, but prefer the provided context.
-             5. Write in professional Malayalam editorial style.
+             5. IF CONTEXT IS IRRELEVANT (e.g. searching for Steve Smith finds Yahoo Transit): Ignore the bad context and write a general profile update about the person/topic based on your internal knowledge.
+             6. Write in professional Malayalam editorial style.
              
              REQUIRED OUTPUT FORMAT (provide as JSON):
              {{
