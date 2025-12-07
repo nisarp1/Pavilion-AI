@@ -1577,11 +1577,63 @@ def _fetch_articles_for_topic_task(topic):
                 
     except Exception as e:
         logger.error(f"Error in on-demand fetch: {e}")
+        # FALLBACK: Create a stub article if scraping fails completely
+        # This ensures the user always gets an actionable item.
+        try:
+             stub_title = f"{topic}: Latest Updates"
+             slug = slugify(stub_title)
+             if not Article.objects.filter(slug=slug).exists():
+                 stub_article = Article.objects.create(
+                    title=stub_title,
+                    slug=slug,
+                    summary=f"Automated stub for trending topic: {topic}. Click Generate to fetch real content.",
+                    status='fetched',
+                    source_url=f"https://www.google.com/search?q={quote_plus(topic)}",
+                    source_feed='Trends Stub',
+                    category='trends',
+                    trend_data={'trending_topic': topic, 'sport': 'Sports'}
+                 )
+                 articles_created += 1
+                 created_articles.append(stub_article)
+                 return {
+                    'success': True,
+                    'articles_created': 1,
+                    'articles': [{'id': stub_article.id, 'title': stub_article.title, 'url': stub_article.source_url}]
+                 }
+        except Exception as ex:
+             logger.error(f"Failed to create stub: {ex}")
+             
         return {'success': False, 'error': str(e)}
 
     # If we have created articles OR found existing ones, it's a success
     if articles_created == 0 and len(created_articles) == 0:
-         return {'success': False, 'error': "No relevant articles could be saved."}
+         # FALLBACK: Create a stub article if valid RSS entries were not found
+         try:
+             stub_title = f"{topic}: Latest News"
+             slug = slugify(stub_title)
+             
+             # Avoid dupe
+             base_slug = slug
+             counter = 1
+             while Article.objects.filter(slug=slug).exists():
+                 slug = f"{base_slug}-{counter}"
+                 counter += 1
+
+             stub_article = Article.objects.create(
+                title=stub_title,
+                slug=slug,
+                summary=f"Automated stub for trending topic: {topic}. Click Generate to fetch real content.",
+                status='fetched',
+                source_url=f"https://www.google.com/search?q={quote_plus(topic)}",
+                source_feed='Trends Stub',
+                category='trends',
+                trend_data={'trending_topic': topic, 'sport': 'Sports'}
+             )
+             articles_created += 1
+             created_articles.append(stub_article)
+         except Exception as ex:
+             logger.error(f"Failed to create stub: {ex}")
+             return {'success': False, 'error': "No relevant articles could be saved."}
 
     return {
         'success': True,
