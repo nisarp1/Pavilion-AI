@@ -374,13 +374,20 @@ def generate_article_with_gemini(article, mode='core'):
                  from duckduckgo_search import DDGS
                  # Use a context manager to ensure clean session handling
                  with DDGS() as ddgs:
-                     # CRITICAL UPDATE: Use 'news' search specifically, or 'text' with strict time/news filters
-                     # We specifically want result from the last day ideally
-                     results = list(ddgs.text(f"{topic} latest news", region="in-en", max_results=5, timelimit="d"))
+                     # CRITICAL FIX for Ambiguous Topics (e.g., "Max" finding M4 Max chips instead of Max Verstappen)
+                     # We force "sports" context into the search query
+                     search_query = f"{topic} sports news india"
+                     if 'verstappen' in topic.lower():
+                         search_query = f"{topic} f1 news"
+                     elif 'cricket' in topic.lower():
+                         search_query = f"{topic} cricket news"
+                     
+                     # First try very recent news (day)
+                     results = list(ddgs.text(search_query, region="in-en", max_results=5, timelimit="d"))
                      
                      if not results:
-                         # Fallback to broader search if 'd' (day) yields nothing
-                         results = list(ddgs.text(f"{topic} news", region="in-en", max_results=5))
+                         # Fallback to broader search (month)
+                         results = list(ddgs.text(search_query, region="in-en", max_results=5, timelimit="m"))
 
                      if results:
                          search_context = "HERE ARE THE LATEST REAL-WORLD NEWS RESULTS (USE THESE FACTS ONLY):\n\n"
