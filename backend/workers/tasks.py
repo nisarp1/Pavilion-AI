@@ -542,12 +542,19 @@ def generate_article_with_gemini(article, mode='core'):
         # Generate content
         try:
             logger.info(f"Calling Gemini API with model: {GEMINI_MODEL}")
-            response = model.generate_content(prompt)
+            # Force JSON response type for structural stability
+            config = {"response_mime_type": "application/json"}
+            response = model.generate_content(prompt, generation_config=config)
             logger.info("Gemini API call successful")
         except Exception as api_error:
-            error_msg = str(api_error)
-            logger.error(f"Gemini API call failed: {error_msg}")
-            import traceback
+            # Fallback if generation_config is not supported by older SDKs
+            logger.warning(f"Gemini API call with JSON config failed: {api_error}. Retrying without config.")
+            try:
+                response = model.generate_content(prompt)
+            except Exception as e2:
+                error_msg = str(e2)
+                logger.error(f"Gemini API call failed: {error_msg}")
+                import traceback
             logger.error(traceback.format_exc())
             
             # Check for specific error types
@@ -568,11 +575,19 @@ def generate_article_with_gemini(article, mode='core'):
             import json
             import re
             
+            # Clean up response text
+            # Remove markdown code blocks if present
+            cleaned_text = generated_text.replace('```json', '').replace('```', '')
+            
             # Extract JSON from the response (might have markdown code blocks)
-            json_match = re.search(r'\{.*\}', generated_text, re.DOTALL)
-            if json_match:
+            # Find the first '{' and last '}'
+            start_idx = cleaned_text.find('{')
+            end_idx = cleaned_text.rfind('}')
+            
+            if start_idx != -1 and end_idx != -1:
+                json_str = cleaned_text[start_idx:end_idx+1]
                 try:
-                    content_data = json.loads(json_match.group())
+                    content_data = json.loads(json_str)
                     logger.info("Successfully parsed JSON from Gemini response")
                     
                     # Return structured data
