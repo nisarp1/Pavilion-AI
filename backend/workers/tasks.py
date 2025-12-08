@@ -365,62 +365,79 @@ def generate_article_with_gemini(article, mode='core'):
         )
         
         if is_stub:
-             # RESEARCH MODE for Stubs: Use DuckDuckGo to get REAL facts
+             # RESEARCH MODE for Stubs: Deep Fetch using Google News RSS + content scraping
              topic = article.title.replace(': Latest Updates', '').replace(': Latest News', '')
-             logger.info(f"Researching topic '{topic}' using DuckDuckGo...")
+             logger.info(f"Researching topic '{topic}' using Deep Fetch (Google News RSS + Scraping)...")
              
              search_context = ""
              source_links_html = ""
              
              try:
-                 from duckduckgo_search import DDGS
-                 # Use a context manager to ensure clean session handling
-                 with DDGS() as ddgs:
-                     # Refined Search Strategy:
-                     # 1. Use simple text search with "news" keyword (more reliable than strict news backend)
-                     # 2. Broaden region to catch global results
-                     
-                     base_query = topic
-                     if 'vs' not in topic.lower() and 'news' not in topic.lower():
-                         base_query = f"{topic} news"
-                     
-                     # Specific overrides for better context
-                     if 'steve smith' in topic.lower():
-                         # Force cricket context
-                         search_query = f"Steve Smith cricket news latest"
-                     elif 'jofra' in topic.lower():
-                         search_query = f"Jofra Archer news latest"
-                     elif 'verstappen' in topic.lower():
-                         search_query = f"Max Verstappen f1 news latest"
-                     elif 'kohli' in topic.lower():
-                         search_query = f"Virat Kohli news latest"
-                     else:
-                         search_query = f"{base_query} latest"
-                     
-                     # First try very recent (day)
-                     results = list(ddgs.text(search_query, max_results=5, timelimit="d"))
-                     
-                     if not results:
-                         # Fallback: Broaden time limit to week 'w'
-                         results = list(ddgs.text(search_query, max_results=5, timelimit="w"))
+                 import feedparser
+                 from urllib.parse import quote_plus
+                 
+                 # 1. Fetch Google News RSS (Strict 24h limit)
+                 encoded_topic = quote_plus(topic)
+                 rss_url = f"https://news.google.com/rss/search?q={encoded_topic}+sports+when:24h&hl=en&gl=IN&ceid=IN:en"
+                 
+                 feed = feedparser.parse(rss_url)
+                 entries = feed.entries[:3]  # Take top 3 articles
+                 
+                 if not entries:
+                     # Fallback to broader search (Last 7 days) if no immediate breaking news
+                     rss_url = f"https://news.google.com/rss/search?q={encoded_topic}+sports+when:7d&hl=en&gl=IN&ceid=IN:en"
+                     feed = feedparser.parse(rss_url)
+                     entries = feed.entries[:3]
 
-                     if results:
-                         search_context = "HERE ARE THE LATEST REAL-WORLD NEWS RESULTS (USE THESE FACTS ONLY):\n\n"
-                         source_links_html = "<h3>Sources:</h3><ul>"
-                         for i, res in enumerate(results):
-                             # Validating result quality: Skip results with 'Yahoo Japan' or 'transit'
-                             if 'yahoo' in res.get('href', '').lower() and 'transit' in res.get('body', '').lower():
-                                 continue
-                                 
-                             search_context += f"Source {i+1}: {res.get('title')}\nSummary: {res.get('body')}\nLink: {res.get('href')}\n\n"
-                             source_links_html += f"<li><a href='{res.get('href')}' target='_blank'>{res.get('title')}</a></li>"
+                 if entries:
+                     search_context = "HERE ARE THE LATEST REAL-WORLD NEWS REPORTS (VALIDATED FACTS):\n\n"
+                     source_links_html = "<h3>Sources:</h3><ul>"
+                     
+                     for i, entry in enumerate(entries):
+                         title = entry.get('title', 'Unknown Title')
+                         link = entry.get('link', '')
+                         desc = entry.get('description', '')
+                         pub_date = entry.get('published', '')
                          
-                         source_links_html += "</ul>"
-                         logger.info(f"Fetched {len(results)} search results for context.")
-                     else:
-                         search_context = f"No direct search results found for '{topic}'. RELY ON YOUR INTERNAL KNOWLEDGE about {topic}."
+                         # Deep Fetch: Attempt to scrape body text from the link
+                         body_text = ""
+                         try:
+                             # Use a browser-like User-Agent
+                             headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+                             resp = requests.get(link, headers=headers, timeout=5)
+                             if resp.status_code == 200:
+                                 # Basic parsing
+                                 soup = BeautifulSoup(resp.content, 'html.parser')
+                                 # Try to find paragraphs (simple heuristic)
+                                 paras = soup.find_all('p')
+                                 # Get first 1000 chars of meaningful text
+                                 text_content = " ".join([p.get_text() for p in paras if len(p.get_text().split()) > 5])
+                                 body_text = text_content[:1500] + "..." if len(text_content) > 1500 else text_content
+                         except Exception as scrape_err:
+                             logger.warning(f"Failed to scrape {link}: {scrape_err}")
+                         
+                         # If scraping failed or returned little, use description
+                         final_content = body_text if len(body_text) > 200 else desc
+                         
+                         search_context += f"Source {i+1}: {title}\nDate: {pub_date}\nContent: {final_content}\nLink: {link}\n\n"
+                         source_links_html += f"<li><a href='{link}' target='_blank'>{title}</a></li>"
+                     
+                     source_links_html += "</ul>"
+                     logger.info(f"Deep Fetched context from {len(entries)} articles.")
+                 else:
+                      # If Google News RSS fails completely (unlikely), try DuckDuckGo as backup
+                      search_context = "Google News returned no results. Relying on DuckDuckGo backup.\n"
+                      try:
+                          from duckduckgo_search import DDGS
+                          with DDGS() as ddgs:
+                              results = list(ddgs.text(f"{topic} sports news", max_results=3, timelimit="d"))
+                              for res in results:
+                                  search_context += f"Title: {res.get('title')}\nSummary: {res.get('body')}\n\n"
+                      except:
+                          pass
+
              except Exception as e:
-                 logger.error(f"DuckDuckGo search failed: {e}")
+                 logger.error(f"Deep Fetch failed: {e}")
                  search_context = f"Search failed. RELY ON YOUR INTERNAL KNOWLEDGE about {topic}."
 
              # CRITICAL: Prompt Engineering to force News style over Wiki style
@@ -429,19 +446,18 @@ def generate_article_with_gemini(article, mode='core'):
              {search_context}
              
              INSTRUCTIONS:
-             1. RECENT NEWS ONLY: Do NOT write a general wikipedia-style essay about what the event "is". Write about WHAT JUST HAPPENED.
+             1. RECENT NEWS ONLY: Do NOT write a general wikipedia-style essay about what the event "is". Write about WHAT JUST HAPPENED based on the 'Source Content' provided above.
              2. SPECIFIC FACTS: Use specific names (winners, scores), times, and outcomes from the search results above.
-             3. If the search results say "Steve Smith fights Jofra Archer", your headline MUST be about that fight.
-             4. NO HALLUCINATIONS: If search results are missing, cite the most likely recent outcome based on your training, but prefer the provided context.
-             5. IF CONTEXT IS IRRELEVANT: Ignore the bad context and write a general profile update.
-             6. Write in professional Malayalam editorial style.
+             3. NO HALLUCINATIONS: If sources describe 'Match A', do not write about 'Match B'.
+             4. If the search results are about a specific match result (e.g. Real Madrid vs Girona), write purely about that match.
+             5. Write in professional Malayalam editorial style.
              
              REQUIRED OUTPUT FORMAT (provide as JSON):
              {{
                  "title_malayalam": "Specific, factual headline about the LATEST EVENT (e.g. Winner Name / Score / Incident)",
                  "summary_malayalam": "2-3 sentences summarizing the specific result/incident",
                  "summary_english": "2-3 sentences summarizing the result in English",
-                 "body_malayalam": "Full detailed news report in Malayalam (4-5 paragraphs, HTML <p> tags). Focus on the Match/Race details/Incidents. IMPORTANT: Do NOT include links here. I will append them automatically.",
+                 "body_malayalam": "Full detailed news report in Malayalam (4-5 paragraphs, HTML <p> tags). Focus on the Match/Race details/Incidents.",
                  "instagram_reel_script": "Engaging 30s script for Instagram Reel about this specific news",
                  "social_media_poster_text": "Catchy 3-4 word title for poster",
                  "social_media_caption": "Caption with hashtags",
