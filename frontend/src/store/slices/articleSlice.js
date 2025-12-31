@@ -5,7 +5,10 @@ export const fetchArticles = createAsyncThunk(
   'articles/fetchArticles',
   async ({ status, category, page = 1, page_size }, { rejectWithValue }) => {
     try {
-      const params = { page }
+      const params = {
+        page,
+        _t: Date.now() // Prevent caching
+      }
       if (status) params.status = status
       if (category) params.category = category
       if (page_size) params.page_size = page_size

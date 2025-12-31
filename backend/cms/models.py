@@ -342,6 +342,11 @@ class Article(models.Model):
             except Exception as e:
                 pass
         
+        # Update published_at to current time whenever a published article is saved
+        # This ensures updated articles appear at the top of the list
+        if self.status == 'published':
+            self.published_at = timezone.now()
+        
         # Track status change for audio generation
         if self.pk:
             try:
@@ -358,8 +363,7 @@ class Article(models.Model):
     def publish(self):
         """Publish the article."""
         self.status = 'published'
-        if not self.published_at:
-            self.published_at = timezone.now()
+        self.published_at = timezone.now()
         self.save()
 
 
