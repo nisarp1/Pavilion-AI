@@ -57,9 +57,17 @@ class ArticleViewSet(viewsets.ModelViewSet):
         
         if status_filter:
             queryset = queryset.filter(status=status_filter)
+            
+            # Apply ordering based on status
+            if status_filter == 'published':
+                queryset = queryset.order_by('-published_at', '-updated_at')
+            elif status_filter == 'draft':
+                queryset = queryset.order_by('-updated_at')
         else:
             # By default, exclude archived articles
             queryset = queryset.exclude(status='archived')
+            # For the "all" view (excluding archived), sort by updated_at to show recent activity
+            queryset = queryset.order_by('-updated_at')
         
         if category_filter:
             # Try to filter by categories (many-to-many) using slug first
