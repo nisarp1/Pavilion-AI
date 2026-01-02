@@ -61,7 +61,8 @@ class ArticleViewSet(viewsets.ModelViewSet):
             # Apply ordering based on status
             if status_filter == 'published':
                 queryset = queryset.order_by('-published_at', '-updated_at')
-            elif status_filter == 'draft':
+            else:
+                # For scanned/draft/archived, sort by last modified
                 queryset = queryset.order_by('-updated_at')
         else:
             # By default, exclude archived articles
