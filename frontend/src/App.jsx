@@ -15,6 +15,10 @@ import WebStoryEdit from './components/WebStories/WebStoryEdit'
 function App() {
   const { isAuthenticated } = useSelector((state) => state.auth)
 
+  // Debug log to confirm deployment
+  console.log('Pavilion AI Frontend - Environment Check')
+
+
   return (
     <Routes>
       <Route
