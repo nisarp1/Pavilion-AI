@@ -176,6 +176,12 @@ CORS_ALLOWED_ORIGINS = [
     if origin.strip() and (origin.startswith('http://') or origin.startswith('https://'))
 ]
 
+# Allow all Vercel and Railway deployments (Preview & Production)
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.vercel\.app$",
+    r"^https://.*\.up\.railway\.app$",
+]
+
 # Add defaults if empty (for local dev)
 if not CORS_ALLOWED_ORIGINS and DEBUG:
     CORS_ALLOWED_ORIGINS = [
