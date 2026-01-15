@@ -663,6 +663,84 @@ class MediaViewSet(viewsets.ModelViewSet):
             logger.error(f"Failed to save external image: {e}")
             return Response({'error': f"Failed to save image: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=True, methods=['post'])
+    def crop_image(self, request, pk=None):
+        """
+        Crop an image and save as a new media item.
+        Expected payload: x, y, width, height (all integers)
+        """
+        media = self.get_object()
+        
+        try:
+            x = int(request.data.get('x'))
+            y = int(request.data.get('y'))
+            width = int(request.data.get('width'))
+            height = int(request.data.get('height'))
+        except (ValueError, TypeError):
+            return Response(
+                {'error': 'Invalid crop parameters. x, y, width, height must be integers.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        if not media.file:
+            return Response({'error': 'No file associated with this media'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        try:
+            from PIL import Image
+            from io import BytesIO
+            from django.core.files.base import ContentFile
+            import os
+            
+            # Open existing image
+            # We need to access the file directly. 
+            # If using S3/storage, opening the file field gives a file-like object
+            with media.file.open('rb') as f:
+                img = Image.open(f)
+                img_format = img.format
+                
+                # Crop
+                # Ensure crop box is within bounds
+                img_width, img_height = img.size
+                if x < 0: x = 0
+                if y < 0: y = 0
+                if x + width > img_width: width = img_width - x
+                if y + height > img_height: height = img_height - y
+                
+                cropped_img = img.crop((x, y, x + width, y + height))
+                
+                # Save cropped image to memory
+                buffer = BytesIO()
+                # Use original format if possible, default to JPEG
+                save_format = img_format if img_format else 'JPEG'
+                if save_format == 'JPEG':
+                     cropped_img = cropped_img.convert('RGB')
+                     
+                cropped_img.save(buffer, format=save_format, quality=90)
+                
+                # Create new media item
+                new_filename = f"cropped_{os.path.basename(media.file.name)}"
+                # Clean filename to avoid issues
+                import re
+                new_filename = re.sub(r'cropped_cropped+', 'cropped', new_filename)
+                
+                new_media = Media(
+                    title=f"{media.title} (Cropped)",
+                    uploaded_by=request.user,
+                    mime_type=Image.MIME.get(save_format, 'image/jpeg')
+                )
+                
+                # Save file content
+                new_media.file.save(new_filename, ContentFile(buffer.getvalue()), save=True)
+                
+                serializer = self.get_serializer(new_media)
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+                
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Image cropping failed: {e}", exc_info=True)
+            return Response({'error': f"Cropping failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class WebStoryViewSet(viewsets.ModelViewSet):
     """

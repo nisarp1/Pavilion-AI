@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
-import { FiSearch, FiUpload, FiX, FiImage, FiCheck, FiGlobe, FiDownload } from 'react-icons/fi'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { FiSearch, FiUpload, FiX, FiImage, FiCheck, FiGlobe, FiDownload, FiCrop, FiZoomIn, FiZoomOut } from 'react-icons/fi'
+import Cropper from 'react-easy-crop'
 import api from '../../services/api'
 
 function MediaLibrary({ isOpen, onClose, onSelect }) {
@@ -12,6 +13,15 @@ function MediaLibrary({ isOpen, onClose, onSelect }) {
   const [selectedMedia, setSelectedMedia] = useState(null)
   const [selectedExternal, setSelectedExternal] = useState(null)
   const fileInputRef = useRef(null)
+
+  // Cropping State
+  const [isCropping, setIsCropping] = useState(false)
+  const [crop, setCrop] = useState({ x: 0, y: 0 })
+  const [zoom, setZoom] = useState(1)
+  const [aspect, setAspect] = useState(16 / 9)
+  const [aspectLabel, setAspectLabel] = useState('16:9 (Featured)')
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null)
+  const [croppingImage, setCroppingImage] = useState(null) // Media item being cropped
 
   useEffect(() => {
     if (isOpen) {
@@ -28,6 +38,7 @@ function MediaLibrary({ isOpen, onClose, onSelect }) {
   useEffect(() => {
     setSelectedMedia(null)
     setSelectedExternal(null)
+    setIsCropping(false)
   }, [activeTab])
 
   const fetchMedia = async () => {
@@ -130,7 +141,7 @@ function MediaLibrary({ isOpen, onClose, onSelect }) {
   // Handle paste events
   useEffect(() => {
     const handlePaste = (e) => {
-      if (!isOpen || activeTab !== 'library') return
+      if (!isOpen || activeTab !== 'library' || isCropping) return
 
       const items = e.clipboardData?.items
       if (!items) return
@@ -153,7 +164,7 @@ function MediaLibrary({ isOpen, onClose, onSelect }) {
       window.addEventListener('paste', handlePaste)
     }
     return () => window.removeEventListener('paste', handlePaste)
-  }, [isOpen, activeTab])
+  }, [isOpen, activeTab, isCropping])
 
   const handleSelect = (mediaItem) => {
     setSelectedMedia(mediaItem)
@@ -174,6 +185,50 @@ function MediaLibrary({ isOpen, onClose, onSelect }) {
     }
   }
 
+  // Cropping Handlers
+  const onCropComplete = useCallback((croppedArea, croppedAreaPixels) => {
+    setCroppedAreaPixels(croppedAreaPixels)
+  }, [])
+
+  const startCropping = () => {
+    if (selectedMedia) {
+      setCroppingImage(selectedMedia)
+      setIsCropping(true)
+      setZoom(1)
+      setCrop({ x: 0, y: 0 })
+      // Default to 16:9
+      setAspect(16 / 9)
+      setAspectLabel('16:9 (Featured)')
+    }
+  }
+
+  const handleSaveCrop = async () => {
+    if (!croppingImage || !croppedAreaPixels) return
+
+    setUploading(true)
+    try {
+      const response = await api.post(`/media/${croppingImage.id}/crop_image/`, {
+        x: Math.round(croppedAreaPixels.x),
+        y: Math.round(croppedAreaPixels.y),
+        width: Math.round(croppedAreaPixels.width),
+        height: Math.round(croppedAreaPixels.height)
+      })
+
+      const newMedia = response.data
+      await fetchMedia()
+      // Select the new cropped image
+      setSelectedMedia(newMedia)
+      setIsCropping(false)
+      setCroppingImage(null)
+
+    } catch (error) {
+      console.error('Error saving cropped image:', error)
+      alert(`Failed to save cropped image: ${error.response?.data?.error || error.message}`)
+    } finally {
+      setUploading(false)
+    }
+  }
+
   if (!isOpen) return null
 
   return (
@@ -186,10 +241,12 @@ function MediaLibrary({ isOpen, onClose, onSelect }) {
 
       {/* Modal */}
       <div className="flex items-center justify-center min-h-screen p-4">
-        <div className="relative bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col">
+        <div className="relative bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col h-[90vh]"> {/* Fixed height for consistency */}
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-            <h2 className="text-xl font-bold text-gray-800">Media Library</h2>
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
+            <h2 className="text-xl font-bold text-gray-800">
+              {isCropping ? 'Edit Image' : 'Media Library'}
+            </h2>
             <button
               onClick={onClose}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -198,198 +255,290 @@ function MediaLibrary({ isOpen, onClose, onSelect }) {
             </button>
           </div>
 
-          {/* Tabs */}
-          <div className="flex border-b border-gray-200 px-6">
-            <button
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'library' ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-              onClick={() => setActiveTab('library')}
-            >
-              <FiImage size={16} />
-              Library
-            </button>
-            <button
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'search' ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-              onClick={() => setActiveTab('search')}
-            >
-              <FiGlobe size={16} />
-              Google Search
-            </button>
-          </div>
-
-          {/* Toolbar */}
-          <div className="p-4 border-b border-gray-200 space-y-4">
-            <div className="flex flex-col sm:flex-row gap-4 justify-between">
-              {/* Search Bar */}
-              <form onSubmit={activeTab === 'search' ? handleExternalSearch : (e) => { e.preventDefault(); fetchMedia() }} className="relative flex-1">
-                <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-                <input
-                  type="text"
-                  placeholder={activeTab === 'library' ? "Search your uploads..." : "Search Google Images..."}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-20 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                />
-                {activeTab === 'search' && (
-                  <button
-                    type="submit"
-                    className="absolute right-2 top-1/2 transform -translate-y-1/2 px-3 py-1 bg-gray-100 text-gray-600 rounded text-xs hover:bg-gray-200 font-medium"
-                  >
-                    Search
-                  </button>
-                )}
-              </form>
-
-              {/* Actions */}
-              {activeTab === 'library' && (
-                <div className="flex items-center gap-4">
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploading}
-                    className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-                    title="Upload or Paste (Ctrl+V) images"
-                  >
-                    <FiUpload size={18} />
-                    {uploading ? 'Uploading...' : 'Upload'}
-                  </button>
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileSelect}
-                    accept="image/*"
-                    multiple
-                    className="hidden"
-                  />
-                </div>
-              )}
+          {/* Tabs (Hidden if Cropping) */}
+          {!isCropping && (
+            <div className="flex border-b border-gray-200 px-6 flex-shrink-0">
+              <button
+                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'library' ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                onClick={() => setActiveTab('library')}
+              >
+                <FiImage size={16} />
+                Library
+              </button>
+              <button
+                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'search' ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                onClick={() => setActiveTab('search')}
+              >
+                <FiGlobe size={16} />
+                Google Search
+              </button>
             </div>
-            {activeTab === 'library' && selectedMedia && (
-              <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded border border-gray-200">
-                Selected: <strong>{selectedMedia.title}</strong>
-              </div>
-            )}
-            {activeTab === 'search' && selectedExternal && (
-              <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded border border-gray-200">
-                Selected: <strong>{selectedExternal.title}</strong>
-              </div>
-            )}
-          </div>
+          )}
 
-          {/* Content Area */}
-          <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
-            {loading ? (
-              <div className="flex flex-col items-center justify-center h-64 gap-3">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-                <p className="text-gray-500 text-sm">{activeTab === 'search' ? 'Searching images...' : 'Loading library...'}</p>
+          {/* Toolbar (Hidden if Cropping) */}
+          {!isCropping && (
+            <div className="p-4 border-b border-gray-200 space-y-4 flex-shrink-0">
+              <div className="flex flex-col sm:flex-row gap-4 justify-between">
+                {/* Search Bar */}
+                <form onSubmit={activeTab === 'search' ? handleExternalSearch : (e) => { e.preventDefault(); fetchMedia() }} className="relative flex-1">
+                  <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                  <input
+                    type="text"
+                    placeholder={activeTab === 'library' ? "Search your uploads..." : "Search Google Images..."}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-20 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  />
+                  {activeTab === 'search' && (
+                    <button
+                      type="submit"
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 px-3 py-1 bg-gray-100 text-gray-600 rounded text-xs hover:bg-gray-200 font-medium"
+                    >
+                      Search
+                    </button>
+                  )}
+                </form>
+
+                {/* Actions */}
+                {activeTab === 'library' && (
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                      className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                      title="Upload or Paste (Ctrl+V) images"
+                    >
+                      <FiUpload size={18} />
+                      {uploading ? 'Uploading...' : 'Upload'}
+                    </button>
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileSelect}
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                    />
+                  </div>
+                )}
               </div>
-            ) : (activeTab === 'library' ? (
-              // Library Grid
-              media.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-64 text-gray-500">
-                  <FiImage size={48} className="mb-4" />
-                  <p>No images found</p>
-                  <p className="text-sm mt-2">Upload images to get started</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                  {media.map((item) => (
-                    <div
-                      key={item.id}
-                      onClick={() => handleSelect(item)}
-                      className={`relative group cursor-pointer border-2 rounded-lg overflow-hidden transition-all bg-white shadow-sm hover:shadow-md ${selectedMedia?.id === item.id
-                        ? 'border-primary-600 ring-2 ring-primary-200'
-                        : 'border-gray-200 hover:border-primary-300'
-                        }`}
-                    >
-                      <div className="aspect-square bg-gray-100">
-                        <img
-                          src={item.url}
-                          alt={item.alt_text || item.title}
-                          className="w-full h-full object-cover"
-                          loading="lazy"
-                        />
-                      </div>
-                      {selectedMedia?.id === item.id && (
-                        <div className="absolute top-2 right-2 bg-primary-600 text-white rounded-full p-1 shadow-sm">
-                          <FiCheck size={16} />
-                        </div>
-                      )}
-                      <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-75 text-white p-2 text-xs truncate opacity-0 group-hover:opacity-100 transition-opacity">
-                        {item.title}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )
+            </div>
+          )}
+
+          {/* Main Content Area */}
+          <div className="flex-1 overflow-hidden bg-gray-50 relative flex flex-col">
+            {isCropping ? (
+              // CROPPING VIEW
+              <div className="flex-1 relative bg-black">
+                <Cropper
+                  image={croppingImage?.url}
+                  crop={crop}
+                  zoom={zoom}
+                  aspect={aspect}
+                  onCropChange={setCrop}
+                  onCropComplete={onCropComplete}
+                  onZoomChange={setZoom}
+                  objectFit="contain" // Ensure whole image is visible to start
+                />
+              </div>
             ) : (
-              // External Search Grid
-              searchResults.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-64 text-gray-500">
-                  <FiGlobe size={48} className="mb-4" />
-                  <p>{searchQuery ? 'No results found.' : 'Enter a search term to find images.'}</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                  {searchResults.map((item, index) => (
-                    <div
-                      key={index}
-                      onClick={() => handleSelectExternal(item)}
-                      className={`relative group cursor-pointer border-2 rounded-lg overflow-hidden transition-all bg-white shadow-sm hover:shadow-md ${selectedExternal?.url === item.url
-                        ? 'border-primary-600 ring-2 ring-primary-200'
-                        : 'border-gray-200 hover:border-primary-300'
-                        }`}
-                    >
-                      <div className="aspect-square bg-gray-100 relative">
-                        <img
-                          src={item.thumbnail || item.url}
-                          alt={item.title}
-                          className="w-full h-full object-cover"
-                          loading="lazy"
-                        />
-                        <div className="absolute bottom-2 right-2 bg-black bg-opacity-50 text-white text-[10px] px-1 rounded">
-                          {item.width}x{item.height}
-                        </div>
-                      </div>
-                      {selectedExternal?.url === item.url && (
-                        <div className="absolute top-2 right-2 bg-primary-600 text-white rounded-full p-1 shadow-sm">
-                          <FiCheck size={16} />
-                        </div>
-                      )}
-                      <div className="absolute top-2 left-2 bg-black bg-opacity-50 text-white rounded p-1 shadow-sm" title="External Source">
-                        <FiGlobe size={12} />
-                      </div>
-                      <div className="p-2 text-xs">
-                        <p className="truncate font-medium text-gray-700">{item.title}</p>
-                        <p className="truncate text-gray-400 mt-0.5">{item.source}</p>
-                      </div>
+              // NORMAL GRID VIEW
+              <div className="flex-1 overflow-y-auto p-6">
+                {loading ? (
+                  <div className="flex flex-col items-center justify-center h-64 gap-3">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+                    <p className="text-gray-500 text-sm">{activeTab === 'search' ? 'Searching images...' : 'Loading library...'}</p>
+                  </div>
+                ) : (activeTab === 'library' ? (
+                  // Library Grid
+                  media.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+                      <FiImage size={48} className="mb-4" />
+                      <p>No images found</p>
+                      <p className="text-sm mt-2">Upload images to get started</p>
                     </div>
-                  ))}
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                      {media.map((item) => (
+                        <div
+                          key={item.id}
+                          onClick={() => handleSelect(item)}
+                          className={`relative group cursor-pointer border-2 rounded-lg overflow-hidden transition-all bg-white shadow-sm hover:shadow-md ${selectedMedia?.id === item.id
+                            ? 'border-primary-600 ring-2 ring-primary-200'
+                            : 'border-gray-200 hover:border-primary-300'
+                            }`}
+                        >
+                          <div className="aspect-square bg-gray-100">
+                            <img
+                              src={item.url}
+                              alt={item.alt_text || item.title}
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                            />
+                          </div>
+                          {selectedMedia?.id === item.id && (
+                            <div className="absolute top-2 right-2 bg-primary-600 text-white rounded-full p-1 shadow-sm">
+                              <FiCheck size={16} />
+                            </div>
+                          )}
+                          <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-75 text-white p-2 text-xs truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                            {item.title}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                ) : (
+                  // External Search Grid
+                  searchResults.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+                      <FiGlobe size={48} className="mb-4" />
+                      <p>{searchQuery ? 'No results found.' : 'Enter a search term to find images.'}</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                      {searchResults.map((item, index) => (
+                        <div
+                          key={index}
+                          onClick={() => handleSelectExternal(item)}
+                          className={`relative group cursor-pointer border-2 rounded-lg overflow-hidden transition-all bg-white shadow-sm hover:shadow-md ${selectedExternal?.url === item.url
+                            ? 'border-primary-600 ring-2 ring-primary-200'
+                            : 'border-gray-200 hover:border-primary-300'
+                            }`}
+                        >
+                          <div className="aspect-square bg-gray-100 relative">
+                            <img
+                              src={item.thumbnail || item.url}
+                              alt={item.title}
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                            />
+                            <div className="absolute bottom-2 right-2 bg-black bg-opacity-50 text-white text-[10px] px-1 rounded">
+                              {item.width}x{item.height}
+                            </div>
+                          </div>
+                          {selectedExternal?.url === item.url && (
+                            <div className="absolute top-2 right-2 bg-primary-600 text-white rounded-full p-1 shadow-sm">
+                              <FiCheck size={16} />
+                            </div>
+                          )}
+                          <div className="absolute top-2 left-2 bg-black bg-opacity-50 text-white rounded p-1 shadow-sm" title="External Source">
+                            <FiGlobe size={12} />
+                          </div>
+                          <div className="p-2 text-xs">
+                            <p className="truncate font-medium text-gray-700">{item.title}</p>
+                            <p className="truncate text-gray-400 mt-0.5">{item.source}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                ))}
+              </div>
+            )}
+
+            {/* Cropping Controls Overlay */}
+            {isCropping && (
+              <div className="bg-white p-4 border-t border-gray-200 flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700">Aspect Ratio: {aspectLabel}</span>
+                  <div className="flex gap-2">
+                    {[
+                      { name: '16:9', ratio: 16 / 9, label: '16:9 (Featured)' },
+                      { name: '9:16', ratio: 9 / 16, label: '9:16 (Story)' },
+                      { name: '1:1', ratio: 1 / 1, label: '1:1 (Square)' },
+                      { name: 'Free', ratio: null, label: 'Free' }
+                    ].map((opt) => (
+                      <button
+                        key={opt.name}
+                        onClick={() => { setAspect(opt.ratio); setAspectLabel(opt.label) }}
+                        className={`px-3 py-1 text-xs rounded border ${aspect === opt.ratio ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+                      >
+                        {opt.name}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              )
-            ))}
+                <div className="flex items-center gap-4">
+                  <FiZoomOut size={16} className="text-gray-500" />
+                  <input
+                    type="range"
+                    value={zoom}
+                    min={1}
+                    max={3}
+                    step={0.1}
+                    aria-labelledby="Zoom"
+                    onChange={(e) => setZoom(e.target.value)}
+                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                  />
+                  <FiZoomIn size={16} className="text-gray-500" />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 bg-white">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleConfirm}
-              disabled={activeTab === 'library' ? !selectedMedia : !selectedExternal || uploading}
-              className="px-6 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-            >
-              {uploading ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                  Importing...
-                </>
-              ) : (
-                activeTab === 'library' ? 'Select Image' : 'Import & Select'
+          <div className="flex items-center justify-between p-6 border-t border-gray-200 bg-white flex-shrink-0">
+            <div>
+              {/* Left side actions */}
+              {!isCropping && activeTab === 'library' && selectedMedia && (
+                <button
+                  onClick={startCropping}
+                  className="flex items-center gap-2 px-4 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
+                >
+                  <FiCrop size={16} />
+                  Edit Image
+                </button>
               )}
-            </button>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => {
+                  if (isCropping) {
+                    setIsCropping(false)
+                    setCroppingImage(null)
+                  } else {
+                    onClose()
+                  }
+                }}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+
+              {isCropping ? (
+                <button
+                  onClick={handleSaveCrop}
+                  disabled={uploading}
+                  className="px-6 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                >
+                  {uploading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                      Saving...
+                    </>
+                  ) : (
+                    'Save Crop'
+                  )}
+                </button>
+              ) : (
+                <button
+                  onClick={handleConfirm}
+                  disabled={activeTab === 'library' ? !selectedMedia : !selectedExternal || uploading}
+                  className="px-6 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                >
+                  {uploading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                      Importing...
+                    </>
+                  ) : (
+                    activeTab === 'library' ? 'Select Image' : 'Import & Select'
+                  )}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
