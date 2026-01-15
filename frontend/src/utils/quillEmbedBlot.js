@@ -12,16 +12,11 @@ class VideoEmbed extends BlockEmbed {
     const node = super.create()
     node.setAttribute('contenteditable', 'false')
     if (typeof value === 'string') {
-      // Value is HTML string (iframe)
       node.innerHTML = value
-    } else if (value && typeof value === 'object') {
-      // Value is object with properties
-      node.setAttribute('src', value.src)
-      node.setAttribute('width', value.width || '560')
-      node.setAttribute('height', value.height || '315')
-      node.setAttribute('frameborder', '0')
-      node.setAttribute('allowfullscreen', 'true')
-      node.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture')
+    } else {
+      // Fallback or complex object handling if we add it later
+      // For now, assume value is the HTML string
+      console.warn('VideoEmbed: received non-string value', value)
     }
     return node
   }
