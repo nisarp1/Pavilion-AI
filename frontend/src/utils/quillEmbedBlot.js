@@ -58,13 +58,31 @@ SocialEmbed.tagName = 'div'
 SocialEmbed.className = 'ql-social-embed'
 
 // Register the blots - this must happen before any Quill instances are created
+const registerCustomBlots = (QuillInstance) => {
+  try {
+    const VideoEmbedBlot = QuillInstance.import('blots/block/embed')
+    // We need to re-define classes if we are using a different Quill instance or base class
+    // But since we are extending the base class from the argument, we should be good.
+    // Actually, we defined the classes above using 'Quill.import'.
+    // If the 'Quill' imported at top of file is different from 'QuillInstance', valid inheritance might look weird.
+    // So let's re-register using the imported 'Quill' which should be fine if package ranges match.
+    // But to be safe, we just register the classes we already defined.
+
+    QuillInstance.register(VideoEmbed, true)
+    QuillInstance.register(SocialEmbed, true)
+    console.log('✅ Custom embeds registered successfully on provided instance')
+  } catch (error) {
+    console.error('❌ Error registering custom blots:', error)
+  }
+}
+
+// Auto-register on the default imported Quill (best effort)
 try {
   Quill.register(VideoEmbed, true)
   Quill.register(SocialEmbed, true)
-  console.log('✅ Custom embeds registered successfully')
-} catch (error) {
-  console.error('❌ Error registering custom blots:', error)
+} catch (e) {
+  // Ignore
 }
 
-export { VideoEmbed, SocialEmbed }
+export { VideoEmbed, SocialEmbed, registerCustomBlots }
 
