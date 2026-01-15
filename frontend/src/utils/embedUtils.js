@@ -10,7 +10,7 @@ export function getYouTubeVideoId(url) {
     /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
     /youtube\.com\/v\/([^&\n?#]+)/,
   ]
-  
+
   for (const pattern of patterns) {
     const match = url.match(pattern)
     if (match && match[1]) {
@@ -24,8 +24,8 @@ export function getYouTubeVideoId(url) {
  * Extract Twitter/X tweet ID from URL
  */
 export function getTwitterTweetId(url) {
-  const match = url.match(/twitter\.com\/(?:\w+\/)?status(?:es)?\/(\d+)/i) || 
-                url.match(/x\.com\/(?:\w+\/)?status(?:es)?\/(\d+)/i)
+  const match = url.match(/twitter\.com\/(?:\w+\/)?status(?:es)?\/(\d+)/i) ||
+    url.match(/x\.com\/(?:\w+\/)?status(?:es)?\/(\d+)/i)
   return match ? match[1] : null
 }
 
@@ -56,21 +56,22 @@ export function generateYouTubeEmbed(videoId) {
  * Generate Twitter/X embed HTML
  */
 export function generateTwitterEmbed(tweetId) {
-  return `<blockquote class="twitter-tweet"><a href="https://twitter.com/i/status/${tweetId}"></a></blockquote><script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>`
+  // We include text in the anchor so it's not empty if JS fails
+  return `<blockquote class="twitter-tweet"><a href="https://twitter.com/i/status/${tweetId}">Loading Tweet ${tweetId}...</a></blockquote>`
 }
 
 /**
  * Generate Instagram embed HTML
  */
 export function generateInstagramEmbed(postId) {
-  return `<blockquote class="instagram-media" data-instgrm-permalink="https://www.instagram.com/p/${postId}/" data-instgrm-version="14"></blockquote><script async src="//www.instagram.com/embed.js"></script>`
+  return `<blockquote class="instagram-media" data-instgrm-permalink="https://www.instagram.com/p/${postId}/" data-instgrm-version="14"><a href="https://www.instagram.com/p/${postId}/">Loading Instagram Post...</a></blockquote>`
 }
 
 /**
  * Generate Facebook embed HTML
  */
 export function generateFacebookEmbed(postId, url) {
-  return `<div class="fb-post" data-href="${url}" data-width="500"></div><script async defer crossorigin="anonymous" src="https://connect.facebook.net/en_US/sdk.js#xfbml=1&version=v18.0"></script>`
+  return `<div class="fb-post" data-href="${url}" data-width="500"><a href="${url}">Loading Facebook Post...</a></div>`
 }
 
 /**
@@ -78,14 +79,14 @@ export function generateFacebookEmbed(postId, url) {
  */
 export function isEmbeddableUrl(url) {
   if (!url || typeof url !== 'string') return false
-  
+
   const embeddablePatterns = [
     /youtube\.com|youtu\.be/i,
     /twitter\.com|x\.com/i,
     /instagram\.com/i,
     /facebook\.com/i,
   ]
-  
+
   return embeddablePatterns.some(pattern => pattern.test(url))
 }
 
@@ -94,31 +95,31 @@ export function isEmbeddableUrl(url) {
  */
 export function convertUrlToEmbed(url) {
   if (!url || typeof url !== 'string') return null
-  
+
   // YouTube
   const youtubeId = getYouTubeVideoId(url)
   if (youtubeId) {
     return generateYouTubeEmbed(youtubeId)
   }
-  
+
   // Twitter/X
   const twitterId = getTwitterTweetId(url)
   if (twitterId) {
     return generateTwitterEmbed(twitterId)
   }
-  
+
   // Instagram
   const instagramId = getInstagramPostId(url)
   if (instagramId) {
     return generateInstagramEmbed(instagramId)
   }
-  
+
   // Facebook
   const facebookId = getFacebookPostId(url)
   if (facebookId) {
     return generateFacebookEmbed(facebookId, url)
   }
-  
+
   return null
 }
 
