@@ -176,14 +176,19 @@ def auto_assign_categories(article):
         matched_categories = []
         
         # Define keyword mappings for common sports terms
+        # Keys should be part of the category name (e.g. 'ipl' matches 'IPL 2024')
         keyword_mappings = {
-            'cricket': ['cricket', 'cricketer', 'ipl', 'odi', 'test', 't20', 'wicket', 'run', 'batting', 'bowling', 'team india', 'bcci'],
-            'football': ['football', 'soccer', 'fifa', 'premier league', 'epl', 'la liga', 'serie a', 'champions league', 'world cup', 'goal', 'match', 'player'],
-            'ipl': ['ipl', 'indian premier league', 'csk', 'mi', 'rcb', 'kkr', 'dc', 'rr', 'srh', 'lsg', 'gt', 'pbks'],
-            'epl': ['epl', 'premier league', 'manchester', 'liverpool', 'chelsea', 'arsenal', 'tottenham'],
-            'laliga': ['la liga', 'barcelona', 'real madrid', 'atletico', 'sevilla', 'valencia'],
-            'seriea': ['serie a', 'juventus', 'milan', 'inter', 'napoli', 'roma'],
-            'isl': ['isl', 'indian super league', 'mumbai city', 'atk', 'kerala blasters', 'bengaluru'],
+            'cricket': ['cricket', 'cricketer', 'odi', 'test', 't20', 'wicket', 'run', 'batting', 'bowling', 'team india', 'bcci', 'icc'],
+            'football': ['football', 'soccer', 'fifa', 'world cup', 'goal', 'match', 'player', 'uefa'],
+            'ipl': ['ipl', 'indian premier league', 'csk', 'chennai super kings', 'mi', 'mumbai indians', 'rcb', 'royal challengers', 'kkr', 'kolkata knight riders', 'dc', 'delhi capitals', 'rr', 'rajasthan royals', 'srh', 'sunrisers', 'lsg', 'lucknow super giants', 'gt', 'gujarat titans', 'pbks', 'punjab kings', 'auction', 'retention'],
+            'epl': ['epl', 'premier league', 'manchester', 'liverpool', 'chelsea', 'arsenal', 'tottenham', 'spurs', 'villa', 'newcastle'],
+            'laliga': ['la liga', 'laliga', 'barcelona', 'real madrid', 'atletico', 'sevilla', 'valencia', 'girona'],
+            'seriea': ['serie a', 'juventus', 'milan', 'inter', 'napoli', 'roma', 'lazio'],
+            'isl': ['isl', 'indian super league', 'mumbai city', 'atk', 'mohun bagan', 'kerala blasters', 'bengaluru', 'fc goa', 'north east united', 'odisha', 'hyderabad', 'chennaiyin', 'jamshedpur'],
+            'regional cricket': ['kerala cricket', 'kca', 'ranji', 'syed mushtaq ali', 'vijay hazare', 'local cricket', 'club cricket', 'kerala', 'sanju samson', 'rohan kunnummal'],
+            'international': ['international', 'world cup', 't20 world cup', 'asia cup', 'olympics', 'commonwealth'],
+            'tennis': ['tennis', 'grand slam', 'wimbledon', 'australian open', 'french open', 'us open', 'atp', 'wta', 'djokovic', 'nadal', 'alcaraz'],
+            'f1': ['f1', 'formula 1', 'verstappen', 'hamilton', 'ferrari', 'mercedes', 'red bull', 'mclaren'],
         }
         
         # Match against category names and descriptions
@@ -191,11 +196,10 @@ def auto_assign_categories(article):
             score = 0
             category_name_lower = category.name.lower()
             
-            # Direct category name match (high weight)
+            # Direct category name match (Very High weight)
             if category_name_lower in article_text:
-                # Count occurrences and weight heavily
                 count = article_text.count(category_name_lower)
-                score += count * 50  # High weight for exact category name
+                score += count * 80
             
             # Check keyword mappings
             for key, keywords in keyword_mappings.items():
@@ -203,51 +207,64 @@ def auto_assign_categories(article):
                     for keyword in keywords:
                         if keyword in article_text:
                             count = article_text.count(keyword)
-                            score += count * 20  # Medium-high weight for mapped keywords
+                            # Boost specific league/team scores significantly
+                            if key in ['ipl', 'isl', 'epl', 'laliga', 'regional cricket']:
+                                score += count * 40  # Specific categories get higher boost
+                            else:
+                                score += count * 15  # General sports get moderate boost
             
             # Check description words
             if category.description:
                 desc_words = re.findall(r'\b\w+\b', category.description.lower())
+                matched_desc_words = 0
                 for word in desc_words:
-                    if len(word) > 3 and word in article_text:
-                        count = article_text.count(word)
-                        score += count * 5  # Lower weight for description words
-            
-            # Check subcategory names (higher weight if subcategory matches)
-            if category.children.exists():
-                for child in category.children.filter(is_active=True):
-                    child_name_lower = child.name.lower()
-                    if child_name_lower in article_text:
-                        count = article_text.count(child_name_lower)
-                        score += count * 30  # Medium-high weight for subcategory names
-                        # Also add score to parent
-                        parent_score = count * 15
-                        score += parent_score
-            
-            # Check individual words from category name
-            category_words = re.findall(r'\b\w+\b', category_name_lower)
-            for word in category_words:
-                if len(word) > 3 and word in article_text:
-                    count = article_text.count(word)
-                    score += count * 3  # Lower weight for individual words
-            
+                    if len(word) > 4 and word in article_text: # Increased min length to reduce noise
+                        matched_desc_words += 1
+                score += matched_desc_words * 5
+
+            # Subcategory boosting
+            # If this category is a child, and its parent is relevant, boost it
+            if category.parent:
+                if category.parent.name.lower() in article_text:
+                     score += 20
+
             # If score is significant, add to matched categories
-            if score > 15:  # Threshold for matching
+            if score > 10:
                 matched_categories.append((category, score))
         
-        # Sort by score and take top matches
+        # Sort by score
         matched_categories.sort(key=lambda x: x[1], reverse=True)
         
-        # Assign categories (limit to top 3 to avoid over-categorization)
-        categories_to_assign = [cat for cat, score in matched_categories[:3]]
+        # Select top categories based on content
+        # Increase limit to 4 to capture nuances
+        categories_to_assign = [cat for cat, score in matched_categories[:4]]
         
+        # ALWAYS ADD "Featured" CATEGORY IF IT EXISTS
+        # This is a specific business rule
+        try:
+             featured_cat = Category.objects.filter(name__iexact='Featured').first()
+             if featured_cat:
+                 # Check if not already in list to avoid duplicates
+                 if featured_cat not in categories_to_assign:
+                     categories_to_assign.insert(0, featured_cat) # Add to top
+                 logger.info("Added 'Featured' category by default")
+        except Exception as e:
+             logger.warning(f"Could not add Featured category: {e}")
+
         if categories_to_assign:
             # Clear existing categories and assign new ones
             article.categories.clear()
             article.categories.add(*categories_to_assign)
             logger.info(f"Auto-assigned {len(categories_to_assign)} categories to article {article.id} ({article.title[:50]}): {[c.name for c in categories_to_assign]}")
         else:
-            logger.debug(f"No categories matched for article {article.id} ({article.title[:50]})")
+            # Fallback: Assign to 'Featured' if nothing else matches, ensuring at least one category
+            try:
+                 featured_cat = Category.objects.filter(name__iexact='Featured').first()
+                 if featured_cat:
+                     article.categories.add(featured_cat)
+                     logger.info(f"No content matches, assigned 'Featured' fallback to article {article.id}")
+            except:
+                 logger.debug(f"No categories matched for article {article.id} ({article.title[:50]})")
             
     except Exception as e:
         logger.error(f"Error auto-assigning categories to article {article.id}: {str(e)}")
