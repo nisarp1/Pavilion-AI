@@ -13,7 +13,7 @@ function ArticleList() {
   const { items, loading, pagination, error, generatingIds = [], publishingIds = [] } = useSelector((state) => state.articles)
   const { categories = [] } = useSelector((state) => state.categories || {})
   const activePolls = useRef(new Set())
-  const [activeTab, setActiveTab] = useState('all')
+  const [activeTab, setActiveTab] = useState('published')
   const [selectedCategory, setSelectedCategory] = useState('')
   const [refreshing, setRefreshing] = useState(false)
   const [selectedArticles, setSelectedArticles] = useState(new Set())
@@ -426,15 +426,6 @@ function ArticleList() {
       <div className="mb-6 border-b border-gray-200">
         <div className="flex gap-8 -mb-px">
           <button
-            onClick={() => setActiveTab('all')}
-            className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'all'
-              ? 'border-primary-600 text-primary-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-          >
-            All
-          </button>
-          <button
             onClick={() => setActiveTab('published')}
             className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'published'
               ? 'border-primary-600 text-primary-600'
@@ -442,6 +433,15 @@ function ArticleList() {
               }`}
           >
             Published
+          </button>
+          <button
+            onClick={() => setActiveTab('fetched')}
+            className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'fetched'
+              ? 'border-primary-600 text-primary-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+          >
+            Fetched
           </button>
           <button
             onClick={() => setActiveTab('draft')}
@@ -453,13 +453,13 @@ function ArticleList() {
             Draft
           </button>
           <button
-            onClick={() => setActiveTab('fetched')}
-            className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'fetched'
+            onClick={() => setActiveTab('all')}
+            className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'all'
               ? 'border-primary-600 text-primary-600'
               : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
           >
-            Fetched
+            All
           </button>
           <button
             onClick={() => setActiveTab('archived')}
