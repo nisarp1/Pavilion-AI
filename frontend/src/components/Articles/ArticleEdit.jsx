@@ -8,7 +8,7 @@ import { fetchCategoryTree } from '../../store/slices/categorySlice'
 import MediaLibrary from '../MediaLibrary/MediaLibrary'
 import ReactQuill from 'react-quill'
 import 'react-quill/dist/quill.snow.css'
-import Quill from 'quill'
+import 'react-quill/dist/quill.snow.css'
 import { registerCustomBlots } from '../../utils/quillEmbedBlot'
 
 // Manual registration to ensure ReactQuill finds it
