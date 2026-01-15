@@ -166,6 +166,26 @@ function ArticleEdit() {
   }, [currentArticle])
 
 
+  // Load social media scripts
+  useEffect(() => {
+    // Twitter/X
+    if (!window.twttr) {
+      const script = document.createElement('script')
+      script.src = 'https://platform.twitter.com/widgets.js'
+      script.async = true
+      script.charset = 'utf-8'
+      document.body.appendChild(script)
+    }
+
+    // Instagram
+    if (!window.instgrm) {
+      const script = document.createElement('script')
+      script.src = '//www.instagram.com/embed.js'
+      script.async = true
+      document.body.appendChild(script)
+    }
+  }, [])
+
   // Paste handler for embeds - proven method from web research
   useEffect(() => {
     let handlePaste = null
@@ -213,10 +233,23 @@ function ArticleEdit() {
             const index = range ? range.index : quill.getLength()
 
             // Create embed wrapper HTML
+            // Note: Script tags in embedHtml might be stripped by Quill, which is why we load SDKs globally
             const wrapperHtml = `<div class="ql-video-embed" contenteditable="false" style="margin: 1rem 0; text-align: center; max-width: 100%;">${embedHtml}</div><p><br></p>`
 
             // Insert embed HTML using Quill's clipboard API
             quill.clipboard.dangerouslyPasteHTML(index, wrapperHtml, 'user')
+
+            // Trigger SDK re-scan for new embeds
+            setTimeout(() => {
+              // Twitter
+              if (window.twttr && window.twttr.widgets) {
+                window.twttr.widgets.load()
+              }
+              // Instagram
+              if (window.instgrm && window.instgrm.Embeds) {
+                window.instgrm.Embeds.process()
+              }
+            }, 100)
 
             // Move cursor after embed
             setTimeout(() => {
@@ -229,11 +262,11 @@ function ArticleEdit() {
           const editorElement = quill.root
           editorElement.addEventListener('paste', handlePaste, true)
 
-          console.log('✅ Embed paste handler registered (proven method)')
+          console.log('✅ Embed paste handler registered')
         } catch (error) {
           console.error('Error setting up paste handler:', error)
         }
-      }, 200)
+      }, 500) // Increased timeout slightly to ensure Quill is ready
     } catch (error) {
       console.error('Error in paste handler useEffect:', error)
     }
