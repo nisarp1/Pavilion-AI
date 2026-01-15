@@ -233,12 +233,12 @@ function ArticleEdit() {
             const range = quill.getSelection(true)
             const index = range ? range.index : quill.getLength()
 
-            // Create embed wrapper HTML
-            // Note: Script tags in embedHtml might be stripped by Quill, which is why we load SDKs globally
-            const wrapperHtml = `<div class="ql-video-embed" contenteditable="false" style="margin: 1rem 0; text-align: center; max-width: 100%;">${embedHtml}</div><p><br></p>`
+            // Insert embed using the custom blot
+            // We use 'videoEmbed' for all embeds as it fits the styling needs
+            quill.insertEmbed(index, 'videoEmbed', embedHtml, 'user')
 
-            // Insert embed HTML using Quill's clipboard API
-            quill.clipboard.dangerouslyPasteHTML(index, wrapperHtml, 'user')
+            // Insert a newline after to breakout
+            quill.insertText(index + 1, '\n', 'user')
 
             // Trigger SDK re-scan for new embeds
             setTimeout(() => {
@@ -254,8 +254,7 @@ function ArticleEdit() {
 
             // Move cursor after embed
             setTimeout(() => {
-              const newLength = quill.getLength()
-              quill.setSelection(newLength, 'silent')
+              quill.setSelection(index + 2, 'silent')
             }, 10)
           }
 
