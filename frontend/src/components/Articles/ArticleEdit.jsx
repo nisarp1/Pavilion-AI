@@ -234,8 +234,11 @@ function ArticleEdit() {
             const index = range ? range.index : quill.getLength()
 
             // Insert embed using the custom blot
-            // We use 'videoEmbed' for all embeds as it fits the styling needs
-            quill.insertEmbed(index, 'videoEmbed', embedHtml, 'user')
+            // Detect type of embed to use correct Blot and styling
+            const isIframe = embedHtml.includes('<iframe')
+            const blotType = isIframe ? 'videoEmbed' : 'socialEmbed'
+
+            quill.insertEmbed(index, blotType, embedHtml, 'user')
 
             // Insert a newline after to breakout
             quill.insertText(index + 1, '\n', 'user')
