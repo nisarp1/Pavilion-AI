@@ -9,6 +9,7 @@ import MediaLibrary from '../MediaLibrary/MediaLibrary'
 import ReactQuill from 'react-quill'
 import 'react-quill/dist/quill.snow.css'
 import Quill from 'quill'
+import '../../utils/quillEmbedBlot' // Register custom blots
 import { convertUrlToEmbed } from '../../utils/embedUtils'
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
