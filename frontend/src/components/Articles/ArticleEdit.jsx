@@ -928,7 +928,8 @@ function ArticleEdit() {
                   'list', 'bullet',
                   'align',
                   'link', 'image',
-                  'code-block'
+                  'code-block',
+                  'videoEmbed', 'socialEmbed'
                 ]}
                 style={{ height: '400px', marginBottom: '50px' }}
                 placeholder="Write your article content here... (Paste YouTube or social media links to auto-embed)"
