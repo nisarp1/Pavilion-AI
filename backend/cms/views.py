@@ -54,6 +54,10 @@ class ArticleViewSet(viewsets.ModelViewSet):
         
         status_filter = self.request.query_params.get('status', None)
         category_filter = self.request.query_params.get('category', None)
+        slug_filter = self.request.query_params.get('slug', None)
+        
+        if slug_filter:
+            queryset = queryset.filter(slug=slug_filter)
         
         if status_filter:
             queryset = queryset.filter(status=status_filter)
