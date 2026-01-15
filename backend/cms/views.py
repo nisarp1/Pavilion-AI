@@ -567,6 +567,102 @@ class MediaViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(uploaded_by=self.request.user)
 
+    @action(detail=False, methods=['get'])
+    def search_external(self, request):
+        """
+        Search for images from external sources (DuckDuckGo).
+        """
+        query = request.query_params.get('query', '')
+        if not query:
+            return Response({'error': 'Query parameter is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            from duckduckgo_search import DDGS
+            results = []
+            
+            # Use DuckDuckGo Search
+            with DDGS() as ddgs:
+                # limited to 20 results for speed
+                ddg_results = list(ddgs.images(
+                    query, 
+                    region="in-en", 
+                    safesearch="moderate", 
+                    max_results=20
+                ))
+                
+                for res in ddg_results:
+                    results.append({
+                        'title': res.get('title', ''),
+                        'url': res.get('image', ''),
+                        'thumbnail': res.get('thumbnail', ''),
+                        'source': res.get('source', ''),
+                        'width': res.get('width', 0),
+                        'height': res.get('height', 0)
+                    })
+            
+            return Response({'results': results})
+            
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"External search failed: {e}")
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['post'])
+    def save_external(self, request):
+        """
+        Download and save an external image to the media library.
+        """
+        image_url = request.data.get('image_url')
+        title = request.data.get('title', '')
+        
+        if not image_url:
+            return Response({'error': 'image_url is required'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        try:
+            import requests
+            from django.core.files.base import ContentFile
+            from urllib.parse import urlparse
+            import os
+            
+            # Download image
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            response = requests.get(image_url, headers=headers, timeout=15)
+            response.raise_for_status()
+            
+            # Determine filename
+            parsed_url = urlparse(image_url)
+            filename = os.path.basename(parsed_url.path)
+            if not filename:
+                filename = f"external_image_{timezone.now().timestamp()}.jpg"
+                
+            # Clean filename
+            import re
+            filename = re.sub(r'[^a-zA-Z0-9._-]', '', filename)
+            if len(filename) > 100:
+                filename = filename[-100:]
+            if not any(filename.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
+                filename += '.jpg'
+                
+            # Create Media object
+            media = Media(
+                title=title or filename,
+                uploaded_by=request.user,
+                mime_type=response.headers.get('Content-Type', 'image/jpeg')
+            )
+            media.file.save(filename, ContentFile(response.content), save=True)
+            
+            serializer = self.get_serializer(media)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to save external image: {e}")
+            return Response({'error': f"Failed to save image: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class WebStoryViewSet(viewsets.ModelViewSet):
     """
