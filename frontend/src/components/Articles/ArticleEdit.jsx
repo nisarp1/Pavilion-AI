@@ -284,9 +284,8 @@ function ArticleEdit() {
 
       await dispatch(updateArticle({ id, data: dataToSave })).unwrap()
 
-      if (status === 'published') {
-        await dispatch(publishArticle(id))
-      }
+      // Removed redundant publishArticle dispatch which was checking current time
+      // The updateArticle call above already handles status changes and published_at dates
 
       navigate('/articles')
     } catch (error) {
