@@ -655,7 +655,7 @@ function ArticleList() {
                               <>
                                 <span>|</span>
                                 <a
-                                  href={`https://phpstack-1448755-6044488.cloudwaysapps.com/${article.slug}/`}
+                                  href={`https://pavilionend.in/${article.slug}/`}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="hover:text-primary-600"
