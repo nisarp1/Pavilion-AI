@@ -7,6 +7,7 @@ import { format } from 'date-fns'
 import { FiEdit, FiPlay, FiCheck, FiArchive, FiRefreshCw, FiMoreVertical, FiEye, FiTrash2, FiClock, FiExternalLink, FiFilter } from 'react-icons/fi'
 import GoogleTrendsWidget from './GoogleTrendsWidget'
 import BulkEditModal from './BulkEditModal'
+import QuickEditModal from './QuickEditModal'
 
 function ArticleList() {
   const dispatch = useDispatch()
@@ -21,6 +22,7 @@ function ArticleList() {
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
   const [showBulkEditModal, setShowBulkEditModal] = useState(false)
+  const [quickEditArticle, setQuickEditArticle] = useState(null)
 
   // Fetch categories on component mount
   useEffect(() => {
@@ -572,6 +574,17 @@ function ArticleList() {
         }}
       />
 
+      {/* Quick Edit Modal */}
+      <QuickEditModal
+        isOpen={!!quickEditArticle}
+        onClose={() => setQuickEditArticle(null)}
+        article={quickEditArticle}
+        onSuccess={() => {
+          setQuickEditArticle(null)
+          refreshList()
+        }}
+      />
+
       {/* Articles Table */}
       <div className="bg-white rounded-lg shadow overflow-hidden border border-gray-200">
         <table className="min-w-full divide-y divide-gray-200">
@@ -651,6 +664,13 @@ function ArticleList() {
                             >
                               Edit
                             </Link>
+                            <span>|</span>
+                            <button
+                              onClick={() => setQuickEditArticle(article)}
+                              className="hover:text-primary-600"
+                            >
+                              Quick Edit
+                            </button>
                             {article.status === 'published' && (
                               <>
                                 <span>|</span>
