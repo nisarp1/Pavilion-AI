@@ -391,9 +391,16 @@ function ArticleEdit() {
   const handleMediaSelect = async (mediaItem) => {
     try {
       setUploadingImage(true)
-      // Update article with selected media ID
+      // Update article with selected media ID AND current form data to save progress
       const updateData = {
+        ...formData,
         featured_media_id: mediaItem.id
+      }
+
+      // Format published_at if it exists (matching handleSave logic)
+      if (updateData.published_at) {
+        const date = new Date(updateData.published_at)
+        updateData.published_at = date.toISOString()
       }
 
       const updateResponse = await api.patch(`/articles/${id}/`, updateData)
