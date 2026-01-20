@@ -59,7 +59,8 @@ function ArticleCreate() {
 
     } catch (error) {
       console.error("AI Generation failed:", error)
-      alert("Failed to start AI generation: " + (error.message || "Unknown error"))
+      const errorMessage = error.message || (typeof error === 'object' ? JSON.stringify(error) : "Unknown error")
+      alert(`Failed to start AI generation: ${errorMessage}`)
     } finally {
       setSaving(false)
     }
@@ -80,8 +81,8 @@ function ArticleCreate() {
           <button
             onClick={() => setMode('manual')}
             className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${mode === 'manual'
-                ? 'bg-white text-primary-600 shadow-sm'
-                : 'text-gray-600 hover:text-gray-800'
+              ? 'bg-white text-primary-600 shadow-sm'
+              : 'text-gray-600 hover:text-gray-800'
               }`}
           >
             <FiEdit3 />
@@ -90,8 +91,8 @@ function ArticleCreate() {
           <button
             onClick={() => setMode('ai')}
             className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${mode === 'ai'
-                ? 'bg-white text-purple-600 shadow-sm'
-                : 'text-gray-600 hover:text-gray-800'
+              ? 'bg-white text-purple-600 shadow-sm'
+              : 'text-gray-600 hover:text-gray-800'
               }`}
           >
             <FiCpu />
