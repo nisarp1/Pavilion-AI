@@ -59,8 +59,24 @@ function ArticleCreate() {
 
     } catch (error) {
       console.error("AI Generation failed:", error)
-      const errorMessage = error.message || (typeof error === 'object' ? JSON.stringify(error) : "Unknown error")
-      alert(`Failed to start AI generation: ${errorMessage}`)
+      let errorMessage = "Unknown error"
+
+      if (error.response && error.response.data) {
+        // Backend validation error (Django DRF)
+        errorMessage = typeof error.response.data === 'object'
+          ? JSON.stringify(error.response.data, null, 2)
+          : error.response.data
+      } else if (error.message) {
+        // Standard JS Error or Axios error message
+        errorMessage = error.message
+      } else if (typeof error === 'string') {
+        errorMessage = error
+      } else {
+        // Fallback for non-enumerable Error objects
+        errorMessage = JSON.stringify(error)
+      }
+
+      alert(`Failed to start AI generation:\n${errorMessage}`)
     } finally {
       setSaving(false)
     }
