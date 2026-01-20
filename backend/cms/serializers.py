@@ -116,6 +116,19 @@ class ArticleSerializer(serializers.ModelSerializer):
             'generation_started_at', 'generation_completed_at',
         ]
     
+    def create(self, validated_data):
+        # Handle featured_media_id - set featured_image from Media model
+        featured_media_id = validated_data.pop('featured_media_id', None)
+        
+        if featured_media_id is not None:
+            try:
+                media = Media.objects.get(id=featured_media_id)
+                validated_data['featured_image'] = media.file
+            except Media.DoesNotExist:
+                pass
+                
+        return super().create(validated_data)
+
     def update(self, instance, validated_data):
         # Handle featured_media_id - set featured_image from Media model
         featured_media_id = validated_data.pop('featured_media_id', None)
