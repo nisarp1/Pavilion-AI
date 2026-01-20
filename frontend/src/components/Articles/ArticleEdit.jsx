@@ -172,6 +172,25 @@ function ArticleEdit() {
     }
   }, [currentArticle])
 
+  // Poll for updates if the article is in 'fetched' state (likely generating)
+  useEffect(() => {
+    let intervalId = null;
+
+    // Only poll if we have an article and it's in a state that implies generation might be happening
+    // Check if status is 'fetched', which happens during the "Stub" phase before AI content replaces it
+    if (currentArticle && currentArticle.status === 'fetched') {
+      console.log("Polling for AI generation updates...");
+      // Poll every 3 seconds
+      intervalId = setInterval(() => {
+        dispatch(fetchArticle(id));
+      }, 3000);
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [dispatch, id, currentArticle?.status]);
+
 
   // Load social media scripts
   useEffect(() => {
