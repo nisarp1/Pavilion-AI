@@ -408,6 +408,16 @@ def generate_article_with_gemini(article, mode='core'):
 
                  if entries:
                      search_context = "HERE ARE THE LATEST REAL-WORLD NEWS REPORTS (VALIDATED FACTS):\n\n"
+                     
+                     # Add User Provided Context if available
+                     user_context = article.trend_data.get('user_context', '') if article.trend_data else ''
+                     if not user_context and article.summary_english:
+                         user_context = article.summary_english
+                         
+                     if user_context and len(user_context) > 5:
+                        search_context += f"USER PROVIDED CONTEXT / LINKS / NOTES:\n{user_context}\n\n"
+                        logger.info(f"Added user context to prompt: {user_context[:50]}...")
+
                      source_links_html = "<h3>Sources:</h3><ul>"
                      
                      for i, entry in enumerate(entries):
