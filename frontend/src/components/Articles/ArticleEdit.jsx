@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { fetchArticle, updateArticle, publishArticle } from '../../store/slices/articleSlice'
@@ -59,6 +59,8 @@ function ArticleEdit() {
   const { categoryTree } = useSelector((state) => state.categories)
   const quillRef = useRef(null)
   const fileInputRef = useRef(null)
+  const editorCursorRef = useRef(null)
+  const [mediaLibraryMode, setMediaLibraryMode] = useState('featured') // 'featured' or 'body'
   const [saving, setSaving] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
   const [showMediaLibrary, setShowMediaLibrary] = useState(false)
@@ -384,11 +386,55 @@ function ArticleEdit() {
     }
   }
 
-  const handleImageButtonClick = () => {
+  const handleFeaturedImageClick = () => {
+    setMediaLibraryMode('featured')
     setShowMediaLibrary(true)
   }
 
+  const handleQuillImageClick = useCallback(() => {
+    const quill = quillRef.current?.getEditor()
+    if (quill) {
+      const range = quill.getSelection()
+      editorCursorRef.current = range ? range.index : quill.getLength()
+    }
+    setMediaLibraryMode('body')
+    setShowMediaLibrary(true)
+  }, [])
+
+  const modules = useMemo(() => ({
+    toolbar: {
+      container: [
+        [{ 'header': [1, 2, 3, false] }],
+        ['bold', 'italic', 'underline', 'strike'],
+        [{ 'color': [] }, { 'background': [] }],
+        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+        [{ 'align': [] }],
+        ['link', 'image'],
+        ['clean'],
+        ['code-block']
+      ],
+      handlers: {
+        image: handleQuillImageClick
+      }
+    },
+    clipboard: {
+      matchVisual: false,
+      matchers: []
+    }
+  }), [handleQuillImageClick])
+
   const handleMediaSelect = async (mediaItem) => {
+    if (mediaLibraryMode === 'body') {
+      const quill = quillRef.current?.getEditor()
+      if (quill) {
+        const index = editorCursorRef.current !== null ? editorCursorRef.current : quill.getLength()
+        quill.insertEmbed(index, 'image', mediaItem.url)
+        quill.insertText(index + 1, '\n') // Add newline after image
+        quill.setSelection(index + 2)
+      }
+      return
+    }
+
     try {
       setUploadingImage(true)
       // Update article with selected media ID AND current form data to save progress
@@ -669,10 +715,12 @@ function ArticleEdit() {
           accept="image/*"
           className="hidden"
         />
-        <MediaLibrary
-          isOpen={showMediaLibrary}
-          onClose={() => setShowMediaLibrary(false)}
-          onSelect={handleMediaSelect}
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleImageUpload}
+          accept="image/*"
+          className="hidden"
         />
         {currentArticle.featured_image_url ? (
           <div className="space-y-3">
@@ -686,7 +734,7 @@ function ArticleEdit() {
             />
             <button
               type="button"
-              onClick={handleImageButtonClick}
+              onClick={handleFeaturedImageClick}
               disabled={uploadingImage}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -696,7 +744,7 @@ function ArticleEdit() {
         ) : (
           <button
             type="button"
-            onClick={handleImageButtonClick}
+            onClick={handleFeaturedImageClick}
             disabled={uploadingImage}
             className="w-full px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-600 hover:border-primary-500 hover:text-primary-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -916,22 +964,7 @@ function ArticleEdit() {
                 theme="snow"
                 value={formData.body}
                 onChange={handleBodyChange}
-                modules={{
-                  toolbar: [
-                    [{ 'header': [1, 2, 3, false] }],
-                    ['bold', 'italic', 'underline', 'strike'],
-                    [{ 'color': [] }, { 'background': [] }],
-                    [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-                    [{ 'align': [] }],
-                    ['link', 'image'],
-                    ['clean'],
-                    ['code-block']
-                  ],
-                  clipboard: {
-                    matchVisual: false,
-                    matchers: []
-                  }
-                }}
+                modules={modules}
                 formats={[
                   'header',
                   'bold', 'italic', 'underline', 'strike',
@@ -1132,6 +1165,13 @@ function ArticleEdit() {
           </DndContext>
         </div>
       </div>
+
+
+      <MediaLibrary
+        isOpen={showMediaLibrary}
+        onClose={() => setShowMediaLibrary(false)}
+        onSelect={handleMediaSelect}
+      />
     </div >
   )
 }
