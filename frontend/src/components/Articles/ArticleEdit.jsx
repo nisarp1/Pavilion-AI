@@ -341,6 +341,9 @@ function ArticleEdit() {
       } else if (status === 'published') {
         // If publishing and no published_at set, use current time
         dataToSave.published_at = new Date().toISOString()
+      } else {
+        // Essential: Send null instead of empty string to avoid "Datetime has wrong format" error
+        dataToSave.published_at = null
       }
 
       await dispatch(updateArticle({ id, data: dataToSave })).unwrap()
@@ -466,6 +469,9 @@ function ArticleEdit() {
       if (updateData.published_at) {
         const date = new Date(updateData.published_at)
         updateData.published_at = date.toISOString()
+      } else {
+        // Essential: Send null instead of empty string to avoid "Datetime has wrong format" error
+        updateData.published_at = null
       }
 
       const updateResponse = await api.patch(`/articles/${id}/`, updateData)
