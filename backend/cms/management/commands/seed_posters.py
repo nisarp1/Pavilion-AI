@@ -5,13 +5,22 @@ import django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "pavilion_gemini.settings")
 django.setup()
 
+from django.core.management.base import BaseCommand
 from cms.models import PosterTemplate
-from django.core.files import File
+import os
 
-def create_templates():
-    # Template 1: Standard Article (Joe Root style)
-    # Check physical file existence relative to repo root
-    t1_path = 'backend/media/templates/posters/template_01.png'
+class Command(BaseCommand):
+    help = 'Seeds initial social media poster templates'
+
+    def handle(self, *args, **options):
+        self.create_templates()
+
+    def create_templates(self):
+        # Template 1: Standard Article (Joe Root style)
+        # Check physical file existence relative to repo root
+        # Base dir is now different since we are in management/commands
+        # But we assume running from project root
+        t1_path = 'backend/media/templates/posters/template_01.png'
     if os.path.exists(t1_path):
         t1, created = PosterTemplate.objects.get_or_create(name="Standard Poster (Top Text)")
         # For ImageField, we set the name relative to MEDIA_ROOT (which is usually inside media/)
@@ -96,8 +105,8 @@ def create_templates():
                 }
             ]
         }
-        t2.save()
-        print(f"Created Template: {t2.name}")
+            t2.save()
+            print(f"Created Template: {t2.name}")
 
 if __name__ == "__main__":
-    create_templates()
+    pass

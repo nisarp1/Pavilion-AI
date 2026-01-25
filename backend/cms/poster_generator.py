@@ -51,17 +51,34 @@ def generate_poster(article, template_id=None):
     try:
         # 1. Get Template
         if template_id:
-            template = PosterTemplate.objects.get(id=template_id)
+            try:
+                template = PosterTemplate.objects.get(id=template_id)
+            except PosterTemplate.DoesNotExist:
+                 return False, f"Template with ID {template_id} not found."
         else:
             template = PosterTemplate.objects.filter(is_active=True).first()
             
         if not template:
-            logger.error("No active poster template found.")
-            return False, "No active poster template found."
+            # Self-healing: Try to create a default template if none exist
+            count = PosterTemplate.objects.count()
+            logger.warning(f"No active poster template found. Total templates in DB: {count}")
             
-        if not template.background_image:
-            logger.error(f"Template {template.name} has no background image.")
-            return False, "Template has no background image."
+            # Try to recover by activating one or creating one
+            if count > 0:
+                template = PosterTemplate.objects.first()
+                if template:
+                    template.is_active = True
+                    template.save()
+                    logger.info(f"Activated existing template: {template.name}")
+            else:
+                return False, "No poster templates found in database. Please run seed_templates.py"
+            
+        if not template:
+             return False, "No active poster template found even after recovery attempt."
+
+        if not template.background_image or not os.path.exists(template.background_image.path):
+            logger.error(f"Template {template.name} has missing background image at {template.background_image.path if template.background_image else 'None'}")
+            return False, "Template has no valid background image file."
 
         # 2. Open Template Image
         try:
