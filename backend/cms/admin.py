@@ -2,7 +2,13 @@
 Django admin configuration for CMS.
 """
 from django.contrib import admin
-from .models import Article, Category, Media, WebStory, WebStorySlide
+from .models import Article, Category, Media, WebStory, WebStorySlide, PosterTemplate
+
+@admin.register(PosterTemplate)
+class PosterTemplateAdmin(admin.ModelAdmin):
+    list_display = ['name', 'is_active', 'created_at']
+    list_filter = ['is_active']
+    search_fields = ['name']
 
 
 @admin.register(Article)

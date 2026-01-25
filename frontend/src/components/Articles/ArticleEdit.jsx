@@ -112,7 +112,7 @@ function ArticleEdit() {
     if (savedOrder) {
       try {
         const parsed = JSON.parse(savedOrder)
-        const defaultKeys = ['status', 'audio', 'featured_image', 'author', 'slug', 'reference_link', 'source', 'categories']
+        const defaultKeys = ['status', 'audio', 'social_poster', 'featured_image', 'author', 'slug', 'reference_link', 'source', 'categories']
         const merged = [...new Set([...parsed, ...defaultKeys])]
         setSidebarOrder(merged)
       } catch (e) { }
@@ -545,6 +545,34 @@ function ArticleEdit() {
     }
   }
 
+  const handleGeneratePoster = async () => {
+    // Save changes first
+    try {
+      if (formData.social_media_poster_text !== currentArticle.social_media_poster_text ||
+        formData.social_media_caption !== currentArticle.social_media_caption) {
+        await api.patch(`/articles/${id}/`, {
+          social_media_poster_text: formData.social_media_poster_text,
+          social_media_caption: formData.social_media_caption
+        })
+      }
+
+      setGeneratingAudio(prev => ({ ...prev, poster: true })) // Reuse generating state object
+
+      const response = await api.post(`/articles/${id}/generate_poster/`)
+
+      if (response.data.poster_url) {
+        dispatch(fetchArticle(id)) // Refresh to show new poster
+        alert('Poster generated successfully!')
+      }
+    } catch (error) {
+      console.error('Error generating poster:', error)
+      const errorMsg = error.response?.data?.error || error.message
+      alert(`Failed to generate poster: ${errorMsg}`)
+    } finally {
+      setGeneratingAudio(prev => ({ ...prev, poster: false }))
+    }
+  }
+
   // Helper function to get full audio URL
   const getFullAudioUrl = (audioUrl) => {
     if (!audioUrl) return null
@@ -726,6 +754,65 @@ function ArticleEdit() {
           </div>
         </div>
       ) : null
+    ),
+    social_poster: (
+      <div className="bg-white rounded-lg shadow p-6">
+        <h3 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide flex items-center gap-2">
+          <FiImage size={16} />
+          Social Media Poster
+        </h3>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Headline Text</label>
+            <textarea
+              name="social_media_poster_text"
+              value={formData.social_media_poster_text}
+              onChange={handleChange}
+              rows={2}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-primary-500 focus:border-primary-500"
+              placeholder="Short headline for the poster..."
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Caption / Summary</label>
+            <textarea
+              name="social_media_caption"
+              value={formData.social_media_caption}
+              onChange={handleChange}
+              rows={2}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-primary-500 focus:border-primary-500"
+              placeholder="Short summary for the poster..."
+            />
+          </div>
+
+          <button
+            onClick={handleGeneratePoster}
+            disabled={generatingAudio.poster}
+            className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+          >
+            {generatingAudio.poster ? 'Generating...' : 'Generate New Poster'}
+          </button>
+
+          {(currentArticle.poster_url || currentArticle.generated_poster) && (
+            <div className="mt-4">
+              <p className="text-xs font-medium text-gray-700 mb-2">Generated Poster:</p>
+              <a
+                href={currentArticle.poster_url || currentArticle.generated_poster}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <img
+                  src={currentArticle.poster_url || currentArticle.generated_poster}
+                  alt="Generated Poster"
+                  className="w-full rounded-lg border border-gray-200 hover:opacity-90 transition-opacity"
+                />
+              </a>
+            </div>
+          )}
+        </div>
+      </div>
     ),
     featured_image: (
       <div className="bg-white rounded-lg shadow p-6">

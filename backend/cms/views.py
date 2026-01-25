@@ -278,6 +278,43 @@ class ArticleViewSet(viewsets.ModelViewSet):
                 'error': f'Reel audio generation error: {str(e)}'
             }, status=status.HTTP_400_BAD_REQUEST)
     
+    @action(detail=True, methods=['post'])
+    def generate_poster(self, request, pk=None):
+        """
+        Generate a social media poster for the article.
+        Expected payload: {
+            "template_id": (optional) ID of the poster template to use
+        }
+        """
+        article = self.get_object()
+        template_id = request.data.get('template_id')
+        
+        try:
+            from .poster_generator import generate_poster
+            
+            success, result = generate_poster(article, template_id)
+            
+            if success:
+                article.refresh_from_db()
+                serializer = self.get_serializer(article)
+                return Response({
+                    'message': 'Poster generated successfully',
+                    'article': serializer.data,
+                    'poster_url': result
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    'error': f'Poster generation failed: {result}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error generating poster: {str(e)}", exc_info=True)
+            return Response({
+                'error': f'Poster generation error: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     @action(detail=False, methods=['get'])
     def check_available_voices(self, request):
         """

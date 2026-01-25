@@ -9,6 +9,7 @@ from django.dispatch import receiver
 from slugify import slugify
 import os
 from .utils import process_image_to_webp
+from .models_poster import PosterTemplate
 
 
 def generate_unique_slug(instance, value, slug_field='slug'):
@@ -299,6 +300,12 @@ class Article(models.Model):
     # Social Media Content
     social_media_poster_text = models.TextField(blank=True, help_text="Short, punchy text for social media poster")
     social_media_caption = models.TextField(blank=True, help_text="Engaging caption for social media post")
+    
+    generated_poster = models.ImageField(
+        upload_to='articles/posters/',
+        null=True,
+        blank=True
+    )
     
     # SEO/OG Data
     meta_title = models.CharField(max_length=255, blank=True)
