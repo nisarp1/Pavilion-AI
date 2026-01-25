@@ -9,6 +9,8 @@ from django.core.management.base import BaseCommand
 from cms.models import PosterTemplate
 import os
 
+from django.conf import settings
+
 class Command(BaseCommand):
     help = 'Seeds initial social media poster templates'
 
@@ -17,10 +19,8 @@ class Command(BaseCommand):
 
     def create_templates(self):
         # Template 1: Standard Article (Joe Root style)
-        # Check physical file existence relative to repo root
-        # Base dir is now different since we are in management/commands
-        # But we assume running from project root
-        t1_path = 'backend/media/templates/posters/template_01.png'
+        # Use settings.MEDIA_ROOT to find files reliably anywhere
+        t1_path = os.path.join(settings.MEDIA_ROOT, 'templates', 'posters', 'template_01.png')
     if os.path.exists(t1_path):
         t1, created = PosterTemplate.objects.get_or_create(name="Standard Poster (Top Text)")
         # For ImageField, we set the name relative to MEDIA_ROOT (which is usually inside media/)
@@ -66,7 +66,7 @@ class Command(BaseCommand):
         print(f"Created Template: {t1.name}")
 
     # Template 2: Breaking News
-    t2_path = 'backend/media/templates/posters/template_02.png'
+    t2_path = os.path.join(settings.MEDIA_ROOT, 'templates', 'posters', 'template_02.png')
     if os.path.exists(t2_path):
         t2, created = PosterTemplate.objects.get_or_create(name="Breaking News")
         t2.background_image.name = 'templates/posters/template_02.png'

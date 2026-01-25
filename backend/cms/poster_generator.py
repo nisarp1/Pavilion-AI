@@ -63,18 +63,26 @@ def generate_poster(article, template_id=None):
             count = PosterTemplate.objects.count()
             logger.warning(f"No active poster template found. Total templates in DB: {count}")
             
-            # Try to recover by activating one or creating one
-            if count > 0:
-                template = PosterTemplate.objects.first()
-                if template:
-                    template.is_active = True
-                    template.save()
-                    logger.info(f"Activated existing template: {template.name}")
-            else:
-                return False, "No poster templates found in database. Please run seed_templates.py"
+            # Try to recover by creating default templates if DB is empty
+            if count == 0:
+                try:
+                    from django.core.management import call_command
+                    logger.info("Auto-seeding poster templates...")
+                    call_command('seed_posters')
+                except Exception as e:
+                    logger.error(f"Failed to auto-seed: {e}")
             
-        if not template:
-             return False, "No active poster template found even after recovery attempt."
+            # Re-check for template
+            template = PosterTemplate.objects.filter(is_active=True).first()
+            if not template:
+                 # Try to force activate one if it exists but inactive
+                 template = PosterTemplate.objects.first()
+                 if template:
+                     template.is_active = True
+                     template.save()
+            
+            if not template:
+                return False, "No poster templates found in database. Auto-seeding failed."
 
         if not template.background_image or not os.path.exists(template.background_image.path):
             logger.error(f"Template {template.name} has missing background image at {template.background_image.path if template.background_image else 'None'}")
