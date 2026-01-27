@@ -455,7 +455,7 @@ def generate_article_with_gemini(article, mode='core'):
                       # If Google News RSS fails completely (unlikely), try DuckDuckGo as backup
                       search_context = "Google News returned no results. Relying on DuckDuckGo backup.\n"
                       try:
-                          from duckduckgo_search import DDGS
+                          from ddgs import DDGS
                           with DDGS() as ddgs:
                               results = list(ddgs.text(f"{topic} sports news", max_results=3, timelimit="d"))
                               for res in results:

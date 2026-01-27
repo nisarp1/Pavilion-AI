@@ -252,7 +252,7 @@ class Article(models.Model):
     categories = models.ManyToManyField(Category, blank=True, related_name='articles')
     
     # Source information
-    source_url = models.URLField(blank=True)
+    source_url = models.URLField(blank=True, max_length=1000)
     source_feed = models.CharField(max_length=255, blank=True)
     
     # Trend data (JSON field for storing Google Trends data)

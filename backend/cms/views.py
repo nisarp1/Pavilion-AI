@@ -618,7 +618,7 @@ class MediaViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Query parameter is required'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            from duckduckgo_search import DDGS
+            from ddgs import DDGS
             results = []
             
             # Use DuckDuckGo Search
