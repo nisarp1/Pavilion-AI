@@ -18,15 +18,22 @@ class Command(BaseCommand):
         self.create_templates()
 
     def create_templates(self):
+        from django.core.files import File
+        
+        # Define source directory for templates (part of the codebase, not media volume)
+        fixtures_dir = os.path.join(settings.BASE_DIR, 'cms', 'fixtures', 'posters')
+        
         # Template 1: Standard Article (Joe Root style)
-        # Use settings.MEDIA_ROOT to find files reliably anywhere
-        t1_path = os.path.join(settings.MEDIA_ROOT, 'templates', 'posters', 'template_01.png')
+        t1_filename = 'template_01.png'
+        t1_path = os.path.join(fixtures_dir, t1_filename)
+        
         if os.path.exists(t1_path):
             t1, created = PosterTemplate.objects.get_or_create(name="Standard Poster (Top Text)")
-            # For ImageField, we set the name relative to MEDIA_ROOT (which is usually inside media/)
-            # If MEDIA_ROOT is 'backend/media', then we just need 'templates/posters/template_01.png'
-            t1.background_image.name = 'templates/posters/template_01.png'
-            
+            if created or not t1.background_image:
+                # Open the file and save it to the model (this copies it to MEDIA_ROOT)
+                with open(t1_path, 'rb') as f:
+                    t1.background_image.save(f"templates/posters/{t1_filename}", File(f), save=True)
+                
             # Config based on the visual
             t1.text_config = {
                 "text_fields": [
@@ -63,13 +70,19 @@ class Command(BaseCommand):
                 ]
             }
             t1.save()
-            print(f"Created Template: {t1.name}")
+            print(f"Created/Updated Template: {t1.name}")
+        else:
+            print(f"Warning: Template source file not found at {t1_path}")
 
         # Template 2: Breaking News
-        t2_path = os.path.join(settings.MEDIA_ROOT, 'templates', 'posters', 'template_02.png')
+        t2_filename = 'template_02.png'
+        t2_path = os.path.join(fixtures_dir, t2_filename)
+        
         if os.path.exists(t2_path):
             t2, created = PosterTemplate.objects.get_or_create(name="Breaking News")
-            t2.background_image.name = 'templates/posters/template_02.png'
+            if created or not t2.background_image:
+                with open(t2_path, 'rb') as f:
+                    t2.background_image.save(f"templates/posters/{t2_filename}", File(f), save=True)
             
             t2.text_config = {
                 "text_fields": [
@@ -106,7 +119,9 @@ class Command(BaseCommand):
                 ]
             }
             t2.save()
-            print(f"Created Template: {t2.name}")
+            print(f"Created/Updated Template: {t2.name}")
+        else:
+            print(f"Warning: Template source file not found at {t2_path}")
 
 if __name__ == "__main__":
     pass
