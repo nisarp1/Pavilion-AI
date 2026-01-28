@@ -211,12 +211,50 @@ def generate_poster(article, template_id=None):
             field_name = config.get('name')
             
             text_content = ""
+            # Check for JSON poster context first (Highest Priority)
+            poster_context = getattr(article, 'poster_context', {}) or {}
+            json_image_content = poster_context.get('image_content', {})
+            
             if field_name == 'headline':
-                text_content = article.social_media_poster_text or article.title
+                # Priority 1: JSON 'text_overlay_malayalam'
+                if json_image_content.get('text_overlay_malayalam'):
+                    text_content = json_image_content.get('text_overlay_malayalam')
+                # Priority 2: Manual override
+                elif article.social_media_poster_text:
+                    text_content = article.social_media_poster_text
+                # Priority 3: Title
+                else:
+                    text_content = article.title
+                    
             elif field_name == 'summary':
-                text_content = article.social_media_caption or article.summary
+                # Priority 1: JSON Stats
+                # Format: "Sanju Samson: 24 (15) | SR: 160"
+                if json_image_content.get('match_statistics'):
+                    stats = json_image_content.get('match_statistics', {})
+                    player = json_image_content.get('player_name', '')
+                    
+                    runs = stats.get('runs', '')
+                    balls = stats.get('balls_faced', '')
+                    sr = stats.get('strike_rate', '')
+                    
+                    parts = []
+                    if player: parts.append(player.upper())
+                    if runs: parts.append(f"{runs} ({balls})")
+                    if sr: parts.append(f"SR: {sr}")
+                    
+                    if parts:
+                         text_content = " | ".join(parts)
+                         
+                # Priority 2: Manual override
+                if not text_content:
+                    text_content = article.social_media_caption or article.summary
+                    
             elif field_name == 'slug':
-                text_content = f"@{article.source_feed}" if article.source_feed else "@pavilionend.in"
+                # JSON Branding
+                if json_image_content.get('branding', {}).get('website'):
+                     text_content = json_image_content.get('branding', {}).get('website').upper()
+                else:
+                     text_content = f"@{article.source_feed}" if article.source_feed else "@PAVILIONEND.IN"
             
             if not text_content:
                 continue

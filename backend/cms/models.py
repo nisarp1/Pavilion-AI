@@ -301,6 +301,9 @@ class Article(models.Model):
     social_media_poster_text = models.TextField(blank=True, help_text="Short, punchy text for social media poster")
     social_media_caption = models.TextField(blank=True, help_text="Engaging caption for social media post")
     
+    # Structured data for advanced poster generation (Gemini JSON output)
+    poster_context = models.JSONField(default=dict, blank=True, help_text="JSON structure with poster details (text, stats, branding)")
+    
     generated_poster = models.ImageField(
         upload_to='articles/posters/',
         null=True,
