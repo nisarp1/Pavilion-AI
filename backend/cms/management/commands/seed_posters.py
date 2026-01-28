@@ -66,6 +66,9 @@ class Command(BaseCommand):
                         "y": 600, # Bottom half
                         "width": 1080,
                         "height": 1320, # Fill bottom?
+                        "remove_background": True,
+                        "fit_mode": "contain",
+                        "align_vertical": "bottom"
                     }
                 ]
             }

@@ -86,3 +86,6 @@ wcwidth==0.2.14
 whitenoise==6.11.0
 yarl==1.22.0
 ddgs>=0.1.0
+
+rembg>=2.0.60
+onnxruntime>=1.19.0

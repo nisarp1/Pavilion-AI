@@ -118,28 +118,72 @@ def generate_poster(article, template_id=None):
                         img_ratio = article_img.width / article_img.height
                         target_ratio = target_w / target_h
                         
-                        if img_ratio > target_ratio:
-                            # Image is wider - crop width
-                            new_height = target_h
-                            new_width = int(new_height * img_ratio)
-                        else:
-                            # Image is taller - crop height
-                            new_width = target_w
-                            new_height = int(new_width / img_ratio)
+                        # Background Removal logic
+                        # If enabled in config (default False)
+                        remove_bg = config.get('remove_background', False)
+                        
+                        if remove_bg:
+                            try:
+                                from rembg import remove
+                                logger.info(f"Removing background from image for article {article.id}")
+                                article_img = remove(article_img)
+                            except ImportError:
+                                logger.warning("rembg not installed, skipping background removal")
+                            except Exception as e:
+                                logger.error(f"Background removal failed: {e}")
+
+                        # If we removed background, we probably want to Fit/Contain rather than Fill/Crop?
+                        # Or maybe we still want to scale but not CROP?
+                        # Usually for a "cutout", you want it to fit within the box without getting chopped.
+                        # Let's check config for 'fit_mode' or assume 'contain' if remove_bg is True
+                        
+                        fit_mode = config.get('fit_mode', 'cover')  # cover (crop), contain (no crop)
+                        if remove_bg and 'fit_mode' not in config:
+                            fit_mode = 'contain'
                             
-                        # Resize
-                        article_img = article_img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-                        
-                        # Center Crop
-                        left = (new_width - target_w) / 2
-                        top = (new_height - target_h) / 2
-                        right = (new_width + target_w) / 2
-                        bottom = (new_height + target_h) / 2
-                        
-                        article_img = article_img.crop((left, top, right, bottom))
-                        
-                        # Paste onto background
-                        bg_image.paste(article_img, (pos_x, pos_y), article_img)
+                        if fit_mode == 'contain':
+                            # Aspect Fit
+                             # Resize to fit within target box without cropping
+                            ratio = min(target_w / article_img.width, target_h / article_img.height)
+                            new_w = int(article_img.width * ratio)
+                            new_h = int(article_img.height * ratio)
+                            article_img = article_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+                            
+                            # Center in target box
+                            final_paste_x = pos_x + (target_w - new_w) // 2
+                            # Align bottom? Specially for person cutouts, bottom align is often better
+                            if config.get('align_vertical') == 'bottom':
+                                final_paste_y = pos_y + (target_h - new_h)
+                            else:
+                                final_paste_y = pos_y + (target_h - new_h) // 2 # Center
+                                
+                            # Paste
+                            bg_image.paste(article_img, (final_paste_x, final_paste_y), article_img)
+                            
+                        else:
+                            # Standard Cover/Crop logic
+                            if img_ratio > target_ratio:
+                                # Image is wider - crop width
+                                new_height = target_h
+                                new_width = int(new_height * img_ratio)
+                            else:
+                                # Image is taller - crop height
+                                new_width = target_w
+                                new_height = int(new_width / img_ratio)
+                                
+                            # Resize
+                            article_img = article_img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                            
+                            # Center Crop
+                            left = (new_width - target_w) / 2
+                            top = (new_height - target_h) / 2
+                            right = (new_width + target_w) / 2
+                            bottom = (new_height + target_h) / 2
+                            
+                            article_img = article_img.crop((left, top, right, bottom))
+                            
+                            # Paste onto background
+                            bg_image.paste(article_img, (pos_x, pos_y), article_img)
                         
                     except Exception as e:
                         logger.warning(f"Failed to process featured image overlay: {e}")
