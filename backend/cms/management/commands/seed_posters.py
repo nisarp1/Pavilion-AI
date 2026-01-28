@@ -40,19 +40,19 @@ class Command(BaseCommand):
                     {
                         "name": "headline",
                         "x": 50,
-                        "y": 100, 
-                        "font_size": 80,
+                        "y": 80, 
+                        "font_size": 85,
                         "color": "#FFFF00", # Yellow
-                        "max_width": 900,
+                        "max_width": 980,
                         "align": "center"
                     },
                     {
                         "name": "summary",
                         "x": 50,
-                        "y": 300,
-                        "font_size": 50,
+                        "y": 380,
+                        "font_size": 55,
                         "color": "#FFFFFF",
-                        "max_width": 900,
+                        "max_width": 980,
                         "align": "center"
                     }
                 ]
@@ -63,9 +63,9 @@ class Command(BaseCommand):
                     {
                         "name": "featured_image",
                         "x": 0,
-                        "y": 600, # Bottom half
+                        "y": 550, # Moved UP to overlap slightly with bottom of text area if needed, but mostly fill bottom
                         "width": 1080,
-                        "height": 1320, # Fill bottom?
+                        "height": 1370, # Increased height
                         "remove_background": True,
                         "fit_mode": "contain",
                         "align_vertical": "bottom"
