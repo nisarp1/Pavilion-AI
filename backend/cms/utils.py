@@ -48,3 +48,45 @@ def process_image_to_webp(image_file, max_width=1024, quality=85):
         # If conversion fails, return original (or raise)
         print(f"Image conversion failed: {e}")
         return None, None
+
+def generate_cutout_image(image_file):
+    """
+    Remove background from an image using rembg.
+    
+    Args:
+        image_file: The image file object or path
+        
+    Returns:
+        tuple: (filename, content_file) or (None, None) if failed
+    """
+    try:
+        from rembg import remove
+        
+        # Open the image
+        img = Image.open(image_file).convert("RGBA")
+        
+        # Process with rembg
+        output_img = remove(img)
+        
+        # Save as PNG (to preserve transparency)
+        output = BytesIO()
+        output_img.save(output, format='PNG')
+        output.seek(0)
+        
+        # Create new filename
+        original_name = getattr(image_file, 'name', 'cutout.png')
+        name_without_ext = os.path.splitext(os.path.basename(original_name))[0]
+        # Avoid double 'cutout' if already present
+        if 'cutout' not in name_without_ext:
+            new_filename = f"{name_without_ext}_cutout.png"
+        else:
+            new_filename = f"{name_without_ext}.png"
+            
+        return new_filename, ContentFile(output.read())
+        
+    except ImportError:
+        print("rembg not installed")
+        return None, None
+    except Exception as e:
+        print(f"Background removal failed: {e}")
+        return None, None

@@ -279,6 +279,12 @@ class Article(models.Model):
         null=True,
         blank=True
     )
+    featured_image_cutout = models.ImageField(
+        upload_to='articles/cutouts/',
+        null=True,
+        blank=True,
+        help_text="Background-removed version of the featured image"
+    )
     
     # Audio
     audio = models.FileField(

@@ -8,7 +8,8 @@ from django.shortcuts import get_object_or_404
 from django.db.models import Q
 from django.utils import timezone
 from datetime import timedelta
-from .models import Article, Category, Media, WebStory
+from .models import Article, Category, Media, WebStory, PosterTemplate
+from .utils import process_image_to_webp, generate_cutout_image
 from .serializers import (
     ArticleSerializer,
     ArticleListSerializer,
@@ -473,6 +474,102 @@ class ArticleViewSet(viewsets.ModelViewSet):
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+    @action(detail=True, methods=['get'])
+    def poster_editor_config(self, request, pk=None):
+        """
+        Get configuration for the manual poster editor.
+        Returns template layout, text content, and image URLs (including cutout).
+        """
+        article = self.get_object()
+        
+        # 1. Ensure we have a cutout image
+        if article.featured_image and not article.featured_image_cutout:
+             # Try to generate it on the fly
+             try:
+                 filename, content = generate_cutout_image(article.featured_image)
+                 if filename and content:
+                     article.featured_image_cutout.save(filename, content, save=True)
+             except Exception as e:
+                 print(f"Failed to generate cutout: {e}")
+
+        # 2. Get Layout Config
+        # We use "Standard Poster (Top Text)" as default
+        template_name = request.query_params.get('template', "Standard Poster (Top Text)")
+        template = PosterTemplate.objects.filter(name=template_name).first()
+        
+        if not template:
+             return Response({'error': 'Template not found'}, status=404)
+             
+        # 3. Prepare Text Data (similar logic to poster_generator.py)
+        poster_context = getattr(article, 'poster_context', {}) or {}
+        json_image_content = poster_context.get('image_content', {})
+        
+        # Headline
+        headline = ""
+        if json_image_content.get('text_overlay_malayalam'):
+            headline = json_image_content.get('text_overlay_malayalam')
+        elif article.social_media_poster_text:
+            headline = article.social_media_poster_text
+        else:
+            headline = article.title
+            
+        # Summary
+        summary = ""
+        if json_image_content.get('match_statistics'):
+             stats = json_image_content.get('match_statistics', {})
+             player = json_image_content.get('player_name', '')
+             runs = stats.get('runs', '')
+             balls = stats.get('balls_faced', '')
+             sr = stats.get('strike_rate', '')
+             parts = []
+             if player: parts.append(player.upper())
+             if runs: parts.append(f"{runs} ({balls})")
+             if sr: parts.append(f"SR: {sr}")
+             if parts: summary = " | ".join(parts)
+        
+        if not summary:
+            summary = article.social_media_caption or article.summary
+
+        # 4. Construct Response
+        data = {
+            "template": {
+                "name": template.name,
+                "background_url": request.build_absolute_uri(template.background_image.url) if template.background_image else None,
+                "text_config": template.text_config, # Contains X, Y, Color, Font info
+                "image_config": template.image_config
+            },
+            "assets": {
+                "cutout_url": request.build_absolute_uri(article.featured_image_cutout.url) if article.featured_image_cutout else None,
+                "original_url": request.build_absolute_uri(article.featured_image.url) if article.featured_image else None
+            },
+            "content": {
+                "headline": headline,
+                "summary": summary
+            }
+        }
+        return Response(data)
+
+    @action(detail=True, methods=['post'])
+    def save_poster(self, request, pk=None):
+        """
+        Upload a manually edited poster image.
+        """
+        article = self.get_object()
+        
+        if 'image' not in request.FILES:
+             return Response({'error': 'No image provided'}, status=400)
+             
+        image_file = request.FILES['image']
+        
+        # Save to generated_poster field
+        article.generated_poster.save(f"poster_{article.id}_manual.png", image_file)
+        article.save()
+        
+        return Response({
+            'success': True, 
+            'url': request.build_absolute_uri(article.generated_poster.url)
+        })
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
