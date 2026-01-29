@@ -3,7 +3,7 @@ import { FiSearch, FiUpload, FiX, FiImage, FiCheck, FiGlobe, FiDownload, FiCrop,
 import Cropper from 'react-easy-crop'
 import api from '../../services/api'
 
-function MediaLibrary({ isOpen, onClose, onSelect, initialMediaId }) {
+function MediaLibrary({ isOpen, onClose, onSelect, initialMediaId, initialUrl }) {
   const [activeTab, setActiveTab] = useState('library') // 'library' or 'search'
   const [media, setMedia] = useState([])
   const [searchResults, setSearchResults] = useState([])
@@ -55,9 +55,31 @@ function MediaLibrary({ isOpen, onClose, onSelect, initialMediaId }) {
       const mediaList = Array.isArray(mediaData) ? mediaData : []
       setMedia(mediaList)
 
-      // Auto-select initial media if present and no selection exists
-      if (initialMediaId && !selectedMedia) {
-        const found = mediaList.find(m => m.id === initialMediaId);
+      // Auto-select match if present and no selection exists
+      if (!selectedMedia) {
+        let found = null;
+
+        if (initialMediaId) {
+          found = mediaList.find(m => m.id === initialMediaId);
+        }
+
+        // Fallback to URL matching if ID didn't find anything
+        if (!found && initialUrl) {
+          // Extract filename or path to fuzzy match, or match exactly
+          // Backend URLs might be absolute or relative, so checking 'endsWith' is safer
+          // Assuming initialUrl is like "http://.../image.jpg" and media.url is similar
+          // Or media.url is "/media/..."
+
+          // Simple check: does one contain the other?
+          found = mediaList.find(m => {
+            if (m.url === initialUrl) return true;
+            // Try to match by filename if full URL differs
+            const mName = m.url.split('/').pop();
+            const iName = initialUrl.split('/').pop();
+            return mName === iName;
+          });
+        }
+
         if (found) {
           setSelectedMedia(found);
         }

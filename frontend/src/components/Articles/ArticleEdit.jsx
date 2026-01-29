@@ -1296,6 +1296,7 @@ function ArticleEdit() {
         onClose={() => setShowMediaLibrary(false)}
         onSelect={handleMediaSelect}
         initialMediaId={mediaLibraryMode === 'featured' ? (currentArticle?.featured_media_id || currentArticle?.featured_image_id) : null}
+        initialUrl={mediaLibraryMode === 'featured' ? currentArticle?.featured_image_url : null}
       />
 
       {showPosterEditor && (
