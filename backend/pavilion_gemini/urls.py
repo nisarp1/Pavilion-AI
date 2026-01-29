@@ -63,10 +63,15 @@ if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 else:
-from .views import serve_media_with_cache
-    
-    # Force serve media files in production (for Railway without S3) with caching
+    # Force serve media files in production (for Railway without S3)
+    # Force serve media files in production (for Railway without S3)
+    def serve_with_cache(request, path, document_root=None, show_indexes=False):
+        response = serve(request, path, document_root, show_indexes)
+        # Cache for 7 days: 60 * 60 * 24 * 7 = 604800 seconds
+        response['Cache-Control'] = 'public, max-age=604800'
+        return response
+
     urlpatterns += [
-        re_path(r'^media/(?P<path>.*)$', serve_media_with_cache, {'document_root': settings.MEDIA_ROOT}),
+        re_path(r'^media/(?P<path>.*)$', serve_with_cache, {'document_root': settings.MEDIA_ROOT}),
     ]
 
