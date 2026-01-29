@@ -63,8 +63,10 @@ if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 else:
-    # Force serve media files in production (for Railway without S3)
+from .views import serve_media_with_cache
+    
+    # Force serve media files in production (for Railway without S3) with caching
     urlpatterns += [
-        re_path(r'^media/(?P<path>.*)$', serve, {'document_root': settings.MEDIA_ROOT}),
+        re_path(r'^media/(?P<path>.*)$', serve_media_with_cache, {'document_root': settings.MEDIA_ROOT}),
     ]
 
