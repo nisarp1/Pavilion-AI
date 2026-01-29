@@ -464,7 +464,7 @@ function ArticleEdit() {
       // Update article with selected media ID AND current form data to save progress
       const updateData = {
         ...formData,
-        featured_media_id: mediaItem.id
+        featured_media_id_write: mediaItem.id
       }
 
       // Format published_at if it exists (matching handleSave logic)
