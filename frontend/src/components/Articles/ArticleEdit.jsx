@@ -850,7 +850,8 @@ function ArticleEdit() {
             <img
               src={currentArticle.featured_image_url}
               alt="Featured"
-              className="w-full h-48 object-cover rounded-lg border border-gray-300"
+              onClick={handleFeaturedImageClick}
+              className="w-full h-48 object-cover rounded-lg border border-gray-300 cursor-pointer hover:opacity-90 transition-opacity"
               onError={(e) => {
                 e.target.style.display = 'none'
               }}
