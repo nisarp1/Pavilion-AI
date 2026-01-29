@@ -3,7 +3,7 @@ import { FiSearch, FiUpload, FiX, FiImage, FiCheck, FiGlobe, FiDownload, FiCrop,
 import Cropper from 'react-easy-crop'
 import api from '../../services/api'
 
-function MediaLibrary({ isOpen, onClose, onSelect }) {
+function MediaLibrary({ isOpen, onClose, onSelect, initialMediaId }) {
   const [activeTab, setActiveTab] = useState('library') // 'library' or 'search'
   const [media, setMedia] = useState([])
   const [searchResults, setSearchResults] = useState([])
@@ -34,9 +34,11 @@ function MediaLibrary({ isOpen, onClose, onSelect }) {
     }
   }, [isOpen, activeTab])
 
-  // Clear selection when switching tabs
+  // Clear selection when switching tabs, unless it matches initial
   useEffect(() => {
-    setSelectedMedia(null)
+    if (activeTab === 'search') {
+      setSelectedMedia(null)
+    }
     setSelectedExternal(null)
     setIsCropping(false)
   }, [activeTab])
@@ -50,7 +52,17 @@ function MediaLibrary({ isOpen, onClose, onSelect }) {
       }
       const response = await api.get('/media/', { params })
       const mediaData = response.data.results || response.data || []
-      setMedia(Array.isArray(mediaData) ? mediaData : [])
+      const mediaList = Array.isArray(mediaData) ? mediaData : []
+      setMedia(mediaList)
+
+      // Auto-select initial media if present and no selection exists
+      if (initialMediaId && !selectedMedia) {
+        const found = mediaList.find(m => m.id === initialMediaId);
+        if (found) {
+          setSelectedMedia(found);
+        }
+      }
+
     } catch (error) {
       console.error('Error fetching media:', error)
       setMedia([])
