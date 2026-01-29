@@ -94,7 +94,8 @@ class ArticleSerializer(serializers.ModelSerializer):
         write_only=True,
         required=False
     )
-    featured_media_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    featured_media_id = serializers.IntegerField(source='featured_media.id', read_only=True)
+    featured_media_id_write = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     
     class Meta:
         model = Article
@@ -102,7 +103,7 @@ class ArticleSerializer(serializers.ModelSerializer):
             'id', 'title', 'slug', 'summary', 'body', 'status', 'category',
             'categories', 'category_ids',
             'author', 'author_name', 'editor', 'editor_name',
-            'featured_image', 'featured_image_url', 'featured_media_id',
+            'featured_image', 'featured_image_url', 'featured_media_id', 'featured_media_id_write',
             'audio', 'audio_url',
             'instagram_reel_script', 'instagram_reel_audio', 'reel_audio_url',
             'social_media_poster_text', 'social_media_caption', 'generated_poster', 'poster_url',
@@ -119,12 +120,13 @@ class ArticleSerializer(serializers.ModelSerializer):
     
     def create(self, validated_data):
         # Handle featured_media_id - set featured_image from Media model
-        featured_media_id = validated_data.pop('featured_media_id', None)
+        featured_media_id = validated_data.pop('featured_media_id_write', None)
         
         if featured_media_id is not None:
             try:
                 media = Media.objects.get(id=featured_media_id)
                 validated_data['featured_image'] = media.file
+                validated_data['featured_media'] = media
             except Media.DoesNotExist:
                 pass
                 
@@ -132,11 +134,12 @@ class ArticleSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         # Handle featured_media_id - set featured_image from Media model
-        featured_media_id = validated_data.pop('featured_media_id', None)
+        featured_media_id = validated_data.pop('featured_media_id_write', None)
         if featured_media_id is not None:
             try:
                 media = Media.objects.get(id=featured_media_id)
                 instance.featured_image = media.file
+                instance.featured_media = media # Save to FK
             except Media.DoesNotExist:
                 pass
         
