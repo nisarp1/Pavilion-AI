@@ -279,6 +279,14 @@ class Article(models.Model):
         null=True,
         blank=True
     )
+    featured_media = models.ForeignKey(
+        'Media',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='featured_in_articles',
+        help_text="Link to Media library item"
+    )
     featured_image_cutout = models.ImageField(
         upload_to='articles/cutouts/',
         null=True,
