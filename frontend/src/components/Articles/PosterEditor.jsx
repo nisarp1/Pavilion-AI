@@ -32,24 +32,16 @@ const PosterEditor = ({ articleId, onClose, onSaveSuccess }) => {
         }
     };
 
-    // Initialize Canvas once config is loaded
+    // Initialize Canvas
     useEffect(() => {
-        if (!config || fabricCanvas) return;
+        if (!canvasRef.current || fabricCanvas) return; // Prevent double init
 
-        // Canvas Size (Scaled down for display if needed, but we usually want 1:1 for export quality)
-        // Let's assume we render at a reasonable scale and export at full resolution.
-        // For simplicity, let's try to match the template dims or a fixed height.
-        // The Standard Poster is usually 1080x1350. That's too big for laptop screen.
-        // We will scale everything down visually using CSS or fabric's zoom, but keep canvas big.
-
-        // Better approach: Set canvas width/height to actual pixel format (1080x1350) 
-        // and use CSS 'transform: scale()' to fit on screen.
-
+        console.log("Initializing Fabric Canvas...");
         const initCanvas = new fabric.Canvas(canvasRef.current, {
             width: 1080,
             height: 1350,
-            backgroundColor: '#000',
-            preserveObjectStacking: true // Selected object stays in its Z-index
+            backgroundColor: '#111', // Dark grey background to see if canvas renders at all
+            preserveObjectStacking: true
         });
 
         setFabricCanvas(initCanvas);
@@ -58,11 +50,12 @@ const PosterEditor = ({ articleId, onClose, onSaveSuccess }) => {
         initCanvas.on('selection:updated', (e) => setActiveObject(e.selected[0]));
         initCanvas.on('selection:cleared', () => setActiveObject(null));
 
-        // Cleanup
         return () => {
+            console.log("Disposing Canvas");
             initCanvas.dispose();
+            setFabricCanvas(null);
         };
-    }, [config]);
+    }, []); // Run once on mount
 
     // Load Content into Canvas
     useEffect(() => {
@@ -82,7 +75,7 @@ const PosterEditor = ({ articleId, onClose, onSaveSuccess }) => {
                     scaleY: 1
                 });
                 // Ensure it fits? Usually template is exactly 1080x1350
-                fabricCanvas.setBackgroundImage(img, fabricCanvas.renderAll.bind(fabricCanvas));
+                if (fabricCanvas) fabricCanvas.setBackgroundImage(img, fabricCanvas.renderAll.bind(fabricCanvas));
             }, { crossOrigin: 'anonymous' });
         }
 
