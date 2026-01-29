@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
+import PosterEditor from './PosterEditor'
 import { useDispatch, useSelector } from 'react-redux'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { fetchArticle, updateArticle, publishArticle } from '../../store/slices/articleSlice'
@@ -65,6 +66,7 @@ function ArticleEdit() {
   const [uploadingImage, setUploadingImage] = useState(false)
   const [showMediaLibrary, setShowMediaLibrary] = useState(false)
   const [generatingAudio, setGeneratingAudio] = useState({})
+  const [showPosterEditor, setShowPosterEditor] = useState(false)
   const [voiceAudioUrls, setVoiceAudioUrls] = useState({})
   const [formData, setFormData] = useState({
     title: '',
@@ -787,13 +789,22 @@ function ArticleEdit() {
             />
           </div>
 
-          <button
-            onClick={handleGeneratePoster}
-            disabled={generatingAudio.poster}
-            className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
-          >
-            {generatingAudio.poster ? 'Generating...' : 'Generate New Poster'}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={handleGeneratePoster}
+              disabled={generatingAudio.poster}
+              className="flex-1 flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+            >
+              {generatingAudio.poster ? 'Processing...' : 'Auto Generate'}
+            </button>
+
+            <button
+              onClick={() => setShowPosterEditor(true)}
+              className="flex-1 flex items-center justify-center px-4 py-2 border border-indigo-600 rounded-md shadow-sm text-sm font-medium text-indigo-600 bg-white hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            >
+              Manual Edit
+            </button>
+          </div>
 
           {(currentArticle.poster_url || currentArticle.generated_poster) && (
             <div className="mt-4">
@@ -1284,6 +1295,18 @@ function ArticleEdit() {
         onClose={() => setShowMediaLibrary(false)}
         onSelect={handleMediaSelect}
       />
+
+      {showPosterEditor && (
+        <PosterEditor
+          articleId={id}
+          onClose={() => setShowPosterEditor(false)}
+          onSaveSuccess={(newUrl) => {
+            dispatch(fetchArticle(id));
+            alert("Poster updated successfully!");
+            setShowPosterEditor(false);
+          }}
+        />
+      )}
     </div >
   )
 }
