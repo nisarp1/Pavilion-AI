@@ -159,6 +159,9 @@ const PosterEditor = ({ articleId, onClose, onSaveSuccess }) => {
             fabricCanvas.add(textObj);
         });
 
+        // Force render
+        fabricCanvas.requestRenderAll();
+
     }, [fabricCanvas, config]);
 
 
