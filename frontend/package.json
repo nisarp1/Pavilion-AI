@@ -59,5 +59,10 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "overrides": {
+    "react-konva": "$react-konva",
+    "konva": "$konva",
+    "react-konva-utils": "1.0.6"
   }
 }
