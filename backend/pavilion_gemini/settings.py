@@ -54,6 +54,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'pavilion_gemini.media_middleware.MediaCacheMiddleware',
 ]
 
 ROOT_URLCONF = 'pavilion_gemini.urls'
