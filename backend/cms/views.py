@@ -8,6 +8,14 @@ from django.shortcuts import get_object_or_404
 from django.db.models import Q
 from django.utils import timezone
 from datetime import timedelta
+import os
+import hashlib
+from PIL import Image
+from io import BytesIO
+from django.db.models import Q
+from django.utils import timezone
+from django.http import HttpResponse, HttpResponseBadRequest, Http404
+from django.conf import settings
 from .models import Article, Category, Media, WebStory, PosterTemplate
 from .utils import process_image_to_webp, generate_cutout_image
 from .serializers import (
@@ -972,3 +980,114 @@ class WebStoryViewSet(viewsets.ModelViewSet):
         serializer = serializer_class(queryset, many=True, context={'request': request})
         return Response(serializer.data)
 
+
+def resize_media_view(request):
+    """
+    Resize media on the fly and cache it.
+    Query params:
+    - path: Relative path to media file (e.g. articles/featured/img.jpg)
+    - w: Width (optional)
+    - h: Height (optional)
+    """
+    path = request.GET.get('path', '')
+    width = request.GET.get('w')
+    height = request.GET.get('h')
+
+    if not path:
+        return HttpResponseBadRequest("Path required")
+
+    # Security check: Prevent directory traversal
+    path = os.path.normpath(path)
+    if '..' in path or path.startswith('/'):
+        return HttpResponseBadRequest("Invalid path")
+
+    # Remove 'media/' prefix if present in the path param (common mistake)
+    if path.startswith('media/'):
+        path = path[6:]
+
+    # Define paths
+    original_path = os.path.join(settings.MEDIA_ROOT, path)
+    
+    if not os.path.exists(original_path):
+        raise Http404("Image not found")
+
+    # If no resize parameters, just serve the original
+    if not width and not height:
+        from django.views.static import serve
+        return serve(request, path, document_root=settings.MEDIA_ROOT)
+
+    try:
+        # Validate dimensions
+        w = int(width) if width else None
+        h = int(height) if height else None
+        
+        # Limit max dimensions
+        if (w and w > 2400) or (h and h > 2400):
+             return HttpResponseBadRequest("Dimensions too large")
+        
+        # Generate cache filename
+        cache_dir = os.path.join(settings.MEDIA_ROOT, 'cache', 'resized')
+        os.makedirs(cache_dir, exist_ok=True)
+        
+        # Unique hash for this resize request
+        file_hash = hashlib.md5(f"{path}_{w}_{h}".encode()).hexdigest()
+        ext = os.path.splitext(path)[1].lower()
+        if not ext: ext = '.webp'
+        
+        # Force WebP output for optimization if original is not animated
+        output_format = 'WEBP'
+        if ext not in ['.gif']:
+             ext = '.webp'
+             
+        cache_filename = f"{file_hash}{ext}"
+        cache_path = os.path.join(cache_dir, cache_filename)
+        
+        # Return cached file if it exists and is newer than original
+        if os.path.exists(cache_path):
+            original_mtime = os.path.getmtime(original_path)
+            cache_mtime = os.path.getmtime(cache_path)
+            if cache_mtime >= original_mtime:
+                 with open(cache_path, 'rb') as f:
+                      content = f.read()
+                 response = HttpResponse(content, content_type=f"image/webp")
+                 response['Cache-Control'] = 'public, max-age=2592000' # 30 days
+                 return response
+
+        # Perform Resize
+        img = Image.open(original_path)
+        
+        # Convert mode if needed (PNG/RGBA to RGB for JPEG, but we use WebP so RGBA is fine)
+        if img.mode == 'P':
+             img = img.convert('RGBA')
+            
+        old_w, old_h = img.size
+        
+        from PIL import ImageOps
+        if w and h:
+            # Smart crop (cover)
+            img = ImageOps.fit(img, (w, h), method=Image.Resampling.LANCZOS)
+        elif w:
+             ratio = w / float(old_w)
+             h = int(float(old_h) * ratio)
+             img = img.resize((w, h), Image.Resampling.LANCZOS)
+        elif h:
+             ratio = h / float(old_h)
+             w = int(float(old_w) * ratio)
+             img = img.resize((w, h), Image.Resampling.LANCZOS)
+             
+        # Save to cache
+        img.save(cache_path, format=output_format, quality=85)
+        
+        # Serve
+        with open(cache_path, 'rb') as f:
+            content = f.read()
+            
+        response = HttpResponse(content, content_type="image/webp")
+        response['Cache-Control'] = 'public, max-age=2592000' # 30 days
+        return response
+
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Resize error: {e}")
+        return HttpResponseBadRequest(f"Error resizing image")

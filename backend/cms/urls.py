@@ -8,6 +8,7 @@ from .views import (
     CategoryViewSet,
     MediaViewSet,
     WebStoryViewSet,
+    resize_media_view,
 )
 
 router = DefaultRouter()
@@ -18,5 +19,6 @@ router.register(r'webstories', WebStoryViewSet, basename='webstory')
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('resize/', resize_media_view, name='media-resize'),
 ]
 
