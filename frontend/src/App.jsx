@@ -11,6 +11,8 @@ import ProtectedRoute from './components/ProtectedRoute'
 import WebStoryList from './components/WebStories/WebStoryList'
 import WebStoryCreate from './components/WebStories/WebStoryCreate'
 import WebStoryEdit from './components/WebStories/WebStoryEdit'
+import InviteUser from './components/Auth/InviteUser'
+import AcceptInvite from './components/Auth/AcceptInvite'
 
 function App() {
   const { isAuthenticated } = useSelector((state) => state.auth)
@@ -25,6 +27,7 @@ function App() {
         path="/login"
         element={isAuthenticated ? <Navigate to="/" /> : <Login />}
       />
+      <Route path="/accept-invite/:token" element={<AcceptInvite />} />
       <Route
         path="/"
         element={
@@ -42,6 +45,7 @@ function App() {
         <Route path="webstories" element={<WebStoryList />} />
         <Route path="webstories/create" element={<WebStoryCreate />} />
         <Route path="webstories/:id/edit" element={<WebStoryEdit />} />
+        <Route path="invite" element={<InviteUser />} />
       </Route>
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>

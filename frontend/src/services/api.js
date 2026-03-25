@@ -34,6 +34,11 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
+
+    const tenantId = localStorage.getItem('tenant_id')
+    if (tenantId) {
+      config.headers['X-Tenant-ID'] = tenantId
+    }
     
     if (typeof config.url === 'string' && !isAbsoluteUrl(config.url)) {
       config.url = config.url.replace(/^\/+/, '')

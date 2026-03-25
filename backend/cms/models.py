@@ -10,6 +10,7 @@ from slugify import slugify
 import os
 from .utils import process_image_to_webp
 from .models_poster import PosterTemplate
+from tenants.models import Tenant
 
 
 def generate_unique_slug(instance, value, slug_field='slug'):
@@ -51,6 +52,7 @@ class Category(models.Model):
     
     name = models.CharField(max_length=100, unique=True)
     slug = models.SlugField(max_length=100, unique=True, blank=True)
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='categories', null=True, blank=True)
     description = models.TextField(blank=True)
     parent = models.ForeignKey(
         'self',
@@ -100,6 +102,7 @@ class Media(models.Model):
     
     title = models.CharField(max_length=255, blank=True)
     file = models.ImageField(upload_to='media/')
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='media', null=True, blank=True)
     alt_text = models.CharField(max_length=255, blank=True)
     description = models.TextField(blank=True)
     uploaded_by = models.ForeignKey(
@@ -243,6 +246,7 @@ class Article(models.Model):
     
     title = models.CharField(max_length=255)
     slug = models.SlugField(max_length=255, unique=True, blank=True)
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='articles', null=True, blank=True)
     summary = models.TextField(blank=True)
     body = models.TextField(blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='fetched')
@@ -405,6 +409,7 @@ class WebStory(models.Model):
 
     title = models.CharField(max_length=255)
     slug = models.SlugField(max_length=255, unique=True, blank=True)
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='webstories', null=True, blank=True)
     summary = models.TextField(blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
     cover_image = models.ImageField(

@@ -55,7 +55,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
         return context
     
     def get_queryset(self):
-        queryset = Article.objects.all().select_related(
+        queryset = Article.objects.all().filter(tenant=self.request.tenant).select_related(
             'author', 'editor'
         ).prefetch_related(
             'categories'
@@ -108,7 +108,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
         return queryset
     
     def perform_create(self, serializer):
-        serializer.save(author=self.request.user)
+        serializer.save(author=self.request.user, tenant=self.request.tenant)
     
     @action(detail=True, methods=['post'])
     def generate(self, request, pk=None):
@@ -600,7 +600,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
         return CategorySerializer
     
     def get_queryset(self):
-        queryset = Category.objects.all()
+        queryset = Category.objects.filter(tenant=self.request.tenant)
         parent_only = self.request.query_params.get('parent_only', None)
         is_active = self.request.query_params.get('is_active', None)
         
@@ -688,7 +688,7 @@ class MediaViewSet(viewsets.ModelViewSet):
         return context
     
     def get_queryset(self):
-        queryset = Media.objects.all()
+        queryset = Media.objects.filter(tenant=self.request.tenant)
         
         # Search functionality
         search = self.request.query_params.get('search', None)
@@ -711,7 +711,7 @@ class MediaViewSet(viewsets.ModelViewSet):
         return queryset.order_by('-created_at')
     
     def perform_create(self, serializer):
-        serializer.save(uploaded_by=self.request.user)
+        serializer.save(uploaded_by=self.request.user, tenant=self.request.tenant)
 
     @action(detail=False, methods=['get'])
     def search_external(self, request):
@@ -908,7 +908,7 @@ class WebStoryViewSet(viewsets.ModelViewSet):
         return WebStorySerializer
 
     def get_queryset(self):
-        queryset = WebStory.objects.all().prefetch_related('slides')
+        queryset = WebStory.objects.filter(tenant=self.request.tenant).prefetch_related('slides')
         status_filter = self.request.query_params.get('status')
         if status_filter:
             queryset = queryset.filter(status=status_filter)
@@ -931,7 +931,7 @@ class WebStoryViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
-        serializer.save(author=self.request.user)
+        serializer.save(author=self.request.user, tenant=self.request.tenant)
 
     def perform_update(self, serializer):
         serializer.save(editor=self.request.user)

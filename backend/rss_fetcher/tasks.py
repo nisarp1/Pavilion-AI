@@ -68,8 +68,8 @@ def fetch_rss_feeds(force=False):
                     logger.debug(f"Feed '{feed.name}' skipped (last fetched {int(minutes_since_last_fetch)} min ago, interval: {feed.fetch_interval} min)")
             
             if should_fetch:
-                logger.info(f"Fetching feed: {feed.name} ({feed.url})")
-                result = fetch_single_rss_feed(feed.url)
+                logger.info(f"Fetching feed: {feed.name} ({feed.url}) for tenant {feed.tenant}")
+                result = fetch_single_rss_feed(feed.url, tenant=feed.tenant)
                 articles_created += result.get('articles_created', 0)
                 
                 # Update last fetched timestamp
@@ -109,7 +109,7 @@ def fetch_rss_feeds(force=False):
     }
 
 
-def fetch_single_rss_feed(feed_url, category='reliable_sources', trend_data=None):
+def fetch_single_rss_feed(feed_url, category='reliable_sources', trend_data=None, tenant=None):
     """
     Fetch and process a single RSS feed.
     """
@@ -179,6 +179,7 @@ def fetch_single_rss_feed(feed_url, category='reliable_sources', trend_data=None
                 source_feed=feed_url,
                 category=category,
                 trend_data=trend_payload,
+                tenant=tenant,
             )
             
             # Try to fetch image if URL found in RSS

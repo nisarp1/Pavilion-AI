@@ -3,6 +3,7 @@ RSS Fetcher models for managing RSS feeds.
 """
 from django.db import models
 from django.utils import timezone
+from tenants.models import Tenant
 
 
 class RSSFeed(models.Model):
@@ -10,6 +11,7 @@ class RSSFeed(models.Model):
     
     name = models.CharField(max_length=255)
     url = models.URLField(unique=True)
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='rss_feeds', null=True, blank=True)
     is_active = models.BooleanField(default=True)
     last_fetched_at = models.DateTimeField(null=True, blank=True)
     fetch_interval = models.IntegerField(

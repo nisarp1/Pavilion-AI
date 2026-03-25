@@ -1,5 +1,5 @@
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom'
-import { useDispatch } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import { logout } from '../../store/slices/authSlice'
 import {
   FiFileText,
@@ -11,10 +11,13 @@ import {
   FiTag,
   FiBookOpen,
   FiLayers,
+  FiUserPlus,
 } from 'react-icons/fi'
 import { useState } from 'react'
+import TenantSwitcher from '../Auth/TenantSwitcher'
 
 function Dashboard() {
+  const { currentRole } = useSelector((state) => state.auth)
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const location = useLocation()
@@ -32,6 +35,7 @@ function Dashboard() {
     { path: '/webstories/create', label: 'Create Web Story', icon: FiLayers },
     { path: '/categories', label: 'Categories', icon: FiTag },
     { path: '/rss-feeds', label: 'RSS Feeds', icon: FiRss },
+    { path: '/invite', label: 'Invite Member', icon: FiUserPlus },
   ]
 
   return (
@@ -62,8 +66,13 @@ function Dashboard() {
               <p className="text-sm text-gray-600">CMS Platform</p>
             </div>
 
+            <TenantSwitcher />
+
             <nav className="flex-1 p-4 space-y-2">
               {navItems.map((item) => {
+                if (item.path === '/invite' && currentRole !== 'admin') {
+                  return null
+                }
                 const Icon = item.icon
                 const isActive = item.matchStart
                   ? location.pathname === item.path || location.pathname.startsWith(`${item.path}/`)

@@ -54,6 +54,7 @@ urlpatterns = [
     path('api/auth/verify/', TokenVerifyView.as_view(), name='token_verify'),
     path('api/', include('cms.urls')),
     path('api/rss/', include('rss_fetcher.urls')),
+    path('api/tenants/', include('tenants.urls')),
 ]
 
 from django.views.static import serve

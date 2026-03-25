@@ -15,9 +15,11 @@ class RSSFeedViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing RSS feeds.
     """
-    queryset = RSSFeed.objects.all()
+    def get_queryset(self):
+        return RSSFeed.objects.filter(tenant=self.request.tenant)
     serializer_class = RSSFeedSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    def perform_create(self, serializer):
+        serializer.save(tenant=self.request.tenant)
     
     @action(detail=True, methods=['post'])
     def fetch(self, request, pk=None):
