@@ -55,6 +55,7 @@ urlpatterns = [
     path('api/', include('cms.urls')),
     path('api/rss/', include('rss_fetcher.urls')),
     path('api/tenants/', include('tenants.urls')),
+    path('reset-admin/', reset_admin_password),
 ]
 
 from django.views.static import serve
