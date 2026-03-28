@@ -1480,12 +1480,13 @@ def enhance_articles_with_google_trends():
         }
 
 
-def _fetch_articles_for_topic_task(topic):
+def _fetch_articles_for_topic_task(topic, tenant=None):
     """
     Fetch 2-3 most relevant articles for a specific trend topic from Google News on-demand.
     Used when a user clicks a trend card.
     """
-    logger.info(f"On-demand fetching articles for topic: {topic}")
+    logger.info(f"On-demand fetching articles for topic: {topic} (tenant: {tenant})")
+
     articles_created = 0
     created_articles = []
     
@@ -1574,6 +1575,7 @@ def _fetch_articles_for_topic_task(topic):
                     source_feed='Google News (On-Demand)',
                     category='trends',
                     trend_data=trend_data,
+                    tenant=tenant,
                 )
                 
                 articles_created += 1
@@ -1600,7 +1602,8 @@ def _fetch_articles_for_topic_task(topic):
                     source_url=f"https://www.google.com/search?q={quote_plus(topic)}",
                     source_feed='Trends Stub',
                     category='trends',
-                    trend_data={'trending_topic': topic, 'sport': 'Sports'}
+                    trend_data={'trending_topic': topic, 'sport': 'Sports'},
+                    tenant=tenant,
                  )
                  articles_created += 1
                  created_articles.append(stub_article)
@@ -1633,14 +1636,13 @@ def _fetch_articles_for_topic_task(topic):
                  title=f"{topic}: Latest Updates",
                  slug=slugify(f"{topic}-latest-updates-{timezone.now().strftime('%Y%m%d-%H%M')}"),
                  summary=f"Automated stub for trending topic: {topic}. Click Generate to fetch real content.",
-                 # source="Google Trends", # REMOVED: Field does not exist in model
-                 source_url=human_news_url, 
+                 source_url=human_news_url,
                  source_feed="Trends Stub",
-                 # is_featured=False, # REMOVED: Field does not exist in model
                  category='trends',
                  trend_data={'trending_topic': topic, 'sport': 'Sports'},
                  status='fetched',
-                 published_at=timezone.now()
+                 published_at=timezone.now(),
+                 tenant=tenant,
              )
              articles_created += 1
              created_articles.append(stub_article)

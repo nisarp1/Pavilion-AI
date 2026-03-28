@@ -137,14 +137,14 @@ class RSSFeedViewSet(viewsets.ModelViewSet):
              return Response({'error': 'topic parameter is required'}, status=status.HTTP_400_BAD_REQUEST)
              
         try:
-            # Run synchronously for immediate feedback usually, or async if slow
-            # For "Click to fetch", user usually waits, but scraping can take 5s.
-            # Let's run sync for simplicity unless it times out.
-            result = _fetch_articles_for_topic_task(topic)
+            # Pass tenant so articles are associated with the right tenant
+            tenant = getattr(request, 'tenant', None)
+            result = _fetch_articles_for_topic_task(topic, tenant=tenant)
             return Response(result, status=status.HTTP_200_OK)
             
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
     
     @action(detail=False, methods=['get'], url_path='realtime-trends')
     def realtime_trends(self, request):
