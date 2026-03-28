@@ -1,2 +1,2 @@
-web: cd backend && gunicorn pavilion_gemini.wsgi --bind 0.0.0.0:$PORT --timeout 120 --workers 2
-release: cd backend && python manage.py migrate --noinput
+worker: cd backend && celery -A pavilion_gemini worker --loglevel=info --concurrency=2
+beat: cd backend && celery -A pavilion_gemini beat --loglevel=info
