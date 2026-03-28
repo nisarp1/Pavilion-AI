@@ -18,7 +18,7 @@ class TenantViewSet(viewsets.ReadOnlyModelViewSet):
         if user.is_staff:
             return Tenant.objects.all()
         
-        tenant_ids = TenantUser.objects.filter(user=user, is_active=True).values_list('tenant_id', flat=True)
+        tenant_ids = TenantUser.objects.filter(user=user).values_list('tenant_id', flat=True)
         return Tenant.objects.filter(id__in=tenant_ids)
 
     @action(detail=False, methods=['get'])
@@ -27,7 +27,7 @@ class TenantViewSet(viewsets.ReadOnlyModelViewSet):
         Get all tenants associated with the current user, including role info.
         """
         user = request.user
-        memberships = TenantUser.objects.filter(user=user, is_active=True)
+        memberships = TenantUser.objects.filter(user=user)
         serializer = TenantUserSerializer(memberships, many=True)
         return Response(serializer.data)
 
