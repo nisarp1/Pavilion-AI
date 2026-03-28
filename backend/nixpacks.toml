@@ -3,12 +3,11 @@ nixPkgs = [
     "python311",
     "postgresql",
     "gcc",
-    "musl-dev",
-    "libffi-dev",
-    "openssl-dev",
-    "zlib-dev",
-    "jpeg-dev",
-    "portaudio-dev"
+    "libffi",
+    "openssl",
+    "zlib",
+    "libjpeg",
+    "pkg-config"
 ]
 
 [variables]
@@ -16,6 +15,7 @@ NIXPACKS_PYTHON_VERSION = '3.11'
 
 [phases.build]
 cmds = [
+    "pip install --upgrade pip",
     "pip install -r requirements.txt",
     "python manage.py collectstatic --noinput",
     "python manage.py migrate"
