@@ -44,11 +44,10 @@ jmespath==1.0.1
 kombu==5.5.4
 lxml==6.0.2
 multidict==6.7.0
-numpy==2.3.4
+numpy>=1.24.0
 packaging==25.0
-pandas==2.3.3
-pillow==12.0.0
-playwright==1.56.0
+pandas>=2.0.0
+pillow>=9.0.0
 prompt_toolkit==3.0.52
 propcache==0.4.1
 proto-plus==1.26.1
@@ -88,5 +87,3 @@ yarl==1.22.0
 ddgs>=0.1.0
 vercel-blob
 
-rembg>=2.0.60
-onnxruntime>=1.19.0
