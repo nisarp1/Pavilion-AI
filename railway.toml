@@ -1,0 +1,9 @@
+[build]
+builder = "RAILPACK"
+
+[build.railpackConfig]
+rootDirectory = "backend"
+
+[deploy]
+startCommand = "gunicorn pavilion_gemini.wsgi --bind 0.0.0.0:$PORT --timeout 120"
+healthcheckPath = "/"
