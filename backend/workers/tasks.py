@@ -27,6 +27,8 @@ from PIL import Image
 import re
 import os
 import html
+import time
+from cms.video_generator import generate_sports_video, get_did_status, upload_to_blob
 
 logger = logging.getLogger(__name__)
 
@@ -1259,4 +1261,119 @@ def generate_article_task(article_id):
     Calls the internal implementation.
     """
     return _generate_article_task_impl(article_id)
+
+
+@shared_task(bind=True, max_retries=20)
+def task_generate_sports_video(self, article_id, format="portrait", script_content=None):
+    """
+    Celery task to generate sports video for an article.
+    Updated to save status and results directly to the Article model.
+    """
+    try:
+        article = Article.objects.get(id=article_id)
+        
+        # Update status to generating
+        article.video_status = 'generating_video'
+        if script_content:
+            article.video_script = script_content
+        article.save()
+        
+        article_text = f"{article.title}. {article.summary}"
+        
+        # 1. Start generation
+        result = generate_sports_video(
+            article_text, 
+            format=format, 
+            post_id=article_id, 
+            script_content=script_content or article.video_script
+        )
+        
+        if "error" in result:
+            logger.error(f"Video generation failed for article {article_id}: {result['error']}")
+            article.video_status = 'failed'
+            article.save()
+            return result
+        
+        # Save generated script if it was just created
+        if not script_content and result.get("script_content"):
+            article.video_script = result["script_content"]
+            article.save()
+            
+        talk_id = result["talk_id"]
+        article.video_audio_url = result.get("audio_url")
+        article.save()
+        
+        logger.info(f"D-ID talk requested. ID: {talk_id}. Starting polling...")
+        
+        # 2. Polling Loop
+        max_attempts = 30
+        attempt = 0
+        video_url = None
+        
+        while attempt < max_attempts:
+            status_data = get_did_status(talk_id)
+            status = status_data.get("status")
+            
+            if status == "done":
+                video_url = status_data.get("result_url")
+                logger.info(f"D-ID video generation complete! URL: {video_url}")
+                break
+            elif status == "error":
+                logger.error(f"D-ID video generation error: {status_data.get('error')}")
+                article.video_status = 'failed'
+                article.save()
+                return {"error": "D-ID API error"}
+            
+            attempt += 1
+            time.sleep(10) # Poll every 10 seconds
+            
+        if not video_url:
+            logger.error(f"D-ID polling timed out for talk_id {talk_id}")
+            article.video_status = 'failed'
+            article.save()
+            return {"error": "Polling timeout"}
+            
+        # 3. Upload final video to Vercel Blob for persistence
+        try:
+            video_response = requests.get(video_url)
+            if video_response.status_code == 200:
+                final_blob_url = upload_to_blob(video_response.content, f"video_{article_id}_{format}.mp4")
+                if final_blob_url:
+                    video_url = final_blob_url
+                    logger.info(f"Uploaded final video to Vercel Blob: {video_url}")
+        except Exception as upload_err:
+            logger.warning(f"Failed to upload final video to Vercel Blob: {upload_err}. Using D-ID URL.")
+            
+        # 4. Update Article with result
+        article.video_url = video_url
+        article.video_status = 'completed'
+        article.save()
+        
+        # 5. Webhook Notification (Keep as optional fallback)
+        webhook_url = os.getenv("CLOUDWAYS_POST_API_URL")
+        if webhook_url:
+            try:
+                api_key = os.getenv("CLOUDWAYS_POST_API_KEY")
+                payload = {"video_url": video_url, "post_id": article_id, "format": format}
+                webhook_headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+                requests.post(webhook_url, json=payload, headers=webhook_headers, timeout=10)
+            except Exception as e:
+                logger.error(f"Failed to send optional webhook: {e}")
+            
+        return {
+            "status": "success",
+            "video_url": video_url,
+            "post_id": article_id,
+            "format": format
+        }
+        
+    except Article.DoesNotExist:
+        logger.error(f"Article with ID {article_id} does not exist.")
+        return {"error": "Article not found"}
+    except Exception as e:
+        logger.error(f"Error in task_generate_sports_video: {e}", exc_info=True)
+        if 'article' in locals():
+            article.video_status = 'failed'
+            article.save()
+        return {"error": str(e)}
 

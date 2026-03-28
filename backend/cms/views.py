@@ -28,6 +28,7 @@ from .serializers import (
     WebStorySerializer,
     WebStoryListSerializer,
 )
+from cms.video_generator import generate_script
 
 
 class ArticleViewSet(viewsets.ModelViewSet):
@@ -323,6 +324,56 @@ class ArticleViewSet(viewsets.ModelViewSet):
             return Response({
                 'error': f'Poster generation error: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['post'])
+    def generate_video_script(self, request, pk=None):
+        """
+        Generate a video script for the article using Gemini.
+        Returns the generated script.
+        """
+        article = self.get_object()
+        format = request.data.get('format', article.video_format or 'portrait')
+        
+        article_text = f"{article.title}. {article.summary or article.body[:200]}"
+        
+        try:
+            script = generate_script(article_text, format=format)
+            if script:
+                article.video_script = script
+                article.video_format = format
+                article.video_status = 'idle'
+                article.save()
+                return Response({'script': script})
+            else:
+                return Response({'error': 'Script generation failed'}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['post'])
+    def generate_video_content(self, request, pk=None):
+        """
+        Trigger the asynchronous video generation task (TTS + D-ID).
+        Optional payload: {"video_script": "custom script", "format": "portrait/landscape"}
+        """
+        article = self.get_object()
+        video_script = request.data.get('video_script', article.video_script)
+        format = request.data.get('format', article.video_format or 'portrait')
+        
+        if not video_script:
+            return Response({'error': 'Video script is required. Pulse "Generate Script" first.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        try:
+            from workers.tasks import task_generate_sports_video
+            task_generate_sports_video.delay(article.id, format=format, script_content=video_script)
+            
+            article.video_status = 'generating_video'
+            article.video_script = video_script
+            article.video_format = format
+            article.save()
+            
+            return Response({'message': 'Video generation started', 'status': 'generating_video'})
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=['get'])
     def check_available_voices(self, request):

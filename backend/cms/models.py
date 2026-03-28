@@ -315,6 +315,24 @@ class Article(models.Model):
         help_text='Generated audio for Instagram Reel'
     )
     
+    # Video Generation Pipeline
+    video_script = models.TextField(blank=True, help_text="Script for the generated sports video")
+    video_url = models.URLField(max_length=500, blank=True, null=True, help_text="Public URL of the generated D-ID video (Vercel Blob)")
+    video_audio_url = models.URLField(max_length=500, blank=True, null=True, help_text="Public URL of the narration audio (Vercel Blob)")
+    video_status = models.CharField(
+        max_length=20,
+        default='idle',
+        choices=[
+            ('idle', 'Idle'),
+            ('generating_script', 'Generating Script'),
+            ('generating_video', 'Generating Video'),
+            ('completed', 'Completed'),
+            ('failed', 'Failed')
+        ],
+        help_text="Status of the video generation pipeline"
+    )
+    video_format = models.CharField(max_length=20, default='portrait', choices=[('portrait', 'Portrait'), ('landscape', 'Landscape')])
+    
     # Social Media Content
     social_media_poster_text = models.TextField(blank=True, help_text="Short, punchy text for social media poster")
     social_media_caption = models.TextField(blank=True, help_text="Engaging caption for social media post")

@@ -19,7 +19,7 @@ import { convertUrlToEmbed } from '../../utils/embedUtils'
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { FiImage, FiUser, FiLink, FiTag, FiExternalLink, FiVolume2, FiDownload, FiMove } from 'react-icons/fi'
+import { FiImage, FiUser, FiLink, FiTag, FiExternalLink, FiVolume2, FiDownload, FiMove, FiVideo } from 'react-icons/fi'
 
 function SortableSidebarItem(props) {
   const {
@@ -85,6 +85,11 @@ function ArticleEdit() {
     og_title: '',
     og_description: '',
     published_at: '',
+    video_script: '',
+    video_url: '',
+    video_audio_url: '',
+    video_status: 'idle',
+    video_format: 'portrait',
   })
 
   const [sidebarOrder, setSidebarOrder] = useState([
@@ -114,7 +119,7 @@ function ArticleEdit() {
     if (savedOrder) {
       try {
         const parsed = JSON.parse(savedOrder)
-        const defaultKeys = ['status', 'audio', 'social_poster', 'featured_image', 'author', 'slug', 'reference_link', 'source', 'categories']
+        const defaultKeys = ['status', 'audio', 'video_generation', 'social_poster', 'featured_image', 'author', 'slug', 'reference_link', 'source', 'categories']
         const merged = [...new Set([...parsed, ...defaultKeys])]
         setSidebarOrder(merged)
       } catch (e) { }
@@ -169,6 +174,11 @@ function ArticleEdit() {
         meta_description: currentArticle.meta_description || '',
         og_title: currentArticle.og_title || '',
         og_description: currentArticle.og_description || '',
+        video_script: currentArticle.video_script || '',
+        video_url: currentArticle.video_url || '',
+        video_audio_url: currentArticle.video_audio_url || '',
+        video_status: currentArticle.video_status || 'idle',
+        video_format: currentArticle.video_format || 'portrait',
         published_at: publishedAt,
       })
     }
@@ -180,7 +190,8 @@ function ArticleEdit() {
 
     // Only poll if we have an article and it's in a state that implies generation might be happening
     // Check if status is 'fetched', which happens during the "Stub" phase before AI content replaces it
-    if (currentArticle && currentArticle.status === 'fetched') {
+    // Polling for general article status and video generation status
+    if (currentArticle && (currentArticle.status === 'fetched' || currentArticle.video_status === 'generating_video')) {
       console.log("Polling for AI generation updates...");
       // Poll every 3 seconds
       intervalId = setInterval(() => {
@@ -583,6 +594,49 @@ function ArticleEdit() {
       : `http://localhost:8000${audioUrl?.startsWith('/') ? '' : '/'}${audioUrl}`
   }
 
+  const handleGenerateVideoScript = async () => {
+    setGeneratingAudio(prev => ({ ...prev, video_script: true }))
+    try {
+      const response = await api.post(`/articles/${id}/generate_video_script/`, {
+        format: formData.video_format
+      })
+      if (response.data.script) {
+        setFormData(prev => ({ ...prev, video_script: response.data.script }))
+        alert('Script generated successfully!')
+      }
+    } catch (error) {
+      console.error('Error generating video script:', error)
+      alert('Failed to generate script: ' + (error.response?.data?.error || error.message))
+    } finally {
+      setGeneratingAudio(prev => ({ ...prev, video_script: false }))
+    }
+  }
+
+  const handleGenerateVideoContent = async () => {
+    if (!formData.video_script) {
+      alert('Please generate or write a video script first.')
+      return
+    }
+
+    setGeneratingAudio(prev => ({ ...prev, video_content: true }))
+    try {
+      const response = await api.post(`/articles/${id}/generate_video_content/`, {
+        video_script: formData.video_script,
+        format: formData.video_format
+      })
+      
+      if (response.data.status === 'generating_video') {
+        dispatch(fetchArticle(id)) // Start polling
+        alert('Video generation started! This will take about 1-2 minutes.')
+      }
+    } catch (error) {
+      console.error('Error generating video:', error)
+      alert('Failed to start video generation: ' + (error.response?.data?.error || error.message))
+    } finally {
+      setGeneratingAudio(prev => ({ ...prev, video_content: false }))
+    }
+  }
+
   if (loading || !currentArticle) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -820,6 +874,105 @@ function ArticleEdit() {
                   className="w-full rounded-lg border border-gray-200 hover:opacity-90 transition-opacity"
                 />
               </a>
+            </div>
+          )}
+        </div>
+      </div>
+    ),
+    video_generation: (
+      <div className="bg-white rounded-lg shadow p-6 border-l-4 border-primary-600">
+        <h3 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide flex items-center gap-2">
+          <FiVideo size={16} className="text-primary-600" />
+          Auto-Video Generation
+        </h3>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Format</label>
+            <select
+              name="video_format"
+              value={formData.video_format}
+              onChange={handleChange}
+              className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:ring-primary-500 focus:border-primary-500"
+            >
+              <option value="portrait">Portrait (9:16) - Reel/Short</option>
+              <option value="landscape">Landscape (16:9) - YouTube</option>
+            </select>
+          </div>
+
+          <div>
+            <div className="flex justify-between items-center mb-1">
+              <label className="block text-xs font-medium text-gray-700">Video Script (Malayalam)</label>
+              <button
+                onClick={handleGenerateVideoScript}
+                disabled={generatingAudio.video_script}
+                className="text-[10px] text-primary-600 hover:text-primary-800 font-bold uppercase tracking-tighter"
+              >
+                {generatingAudio.video_script ? 'Generating...' : '✨ Regenerate AI Script'}
+              </button>
+            </div>
+            <textarea
+              name="video_script"
+              value={formData.video_script}
+              onChange={handleChange}
+              rows={5}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:ring-primary-500 focus:border-primary-500"
+              placeholder="Generate script first or write your own..."
+            />
+          </div>
+
+          <button
+            onClick={handleGenerateVideoContent}
+            disabled={generatingAudio.video_content || formData.video_status === 'generating_video' || !formData.video_script}
+            className={`w-full flex items-center justify-center px-4 py-3 rounded-lg shadow-sm text-sm font-bold text-white transition-all ${
+              formData.video_status === 'generating_video'
+                ? 'bg-amber-500 animate-pulse'
+                : 'bg-primary-600 hover:bg-primary-700 active:scale-95'
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
+          >
+            {formData.video_status === 'generating_video' 
+              ? 'Generating Video (D-ID)...' 
+              : generatingAudio.video_content ? 'Starting...' : '🎬 Generate Final Video'}
+          </button>
+
+          {/* Result Section */}
+          {(formData.video_url || formData.video_audio_url) && (
+            <div className="mt-4 pt-4 border-t border-gray-100 space-y-4">
+              {formData.video_audio_url && (
+                <div className="bg-gray-50 p-2 rounded-lg">
+                  <p className="text-[10px] text-gray-500 font-bold mb-1 uppercase">Narration Audio</p>
+                  <audio
+                    controls
+                    src={formData.video_audio_url}
+                    className="w-full h-8"
+                  />
+                </div>
+              )}
+              
+              {formData.video_url && (
+                <div className="bg-gray-50 p-2 rounded-lg">
+                  <p className="text-[10px] text-gray-500 font-bold mb-1 uppercase">Final Video</p>
+                  <video
+                    controls
+                    src={formData.video_url}
+                    className="w-full rounded-md shadow-inner bg-black"
+                  />
+                  <a 
+                    href={formData.video_url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-1 mt-2 text-xs text-primary-600 hover:underline"
+                  >
+                    <FiDownload size={12} /> Download Video
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
+
+          {formData.video_status === 'failed' && (
+            <div className="p-2 bg-red-50 text-red-600 text-xs rounded border border-red-100 italic">
+              Generation failed. Check logs or try again with a different script.
             </div>
           )}
         </div>
