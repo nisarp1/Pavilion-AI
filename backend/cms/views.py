@@ -380,12 +380,13 @@ class ArticleViewSet(viewsets.ModelViewSet):
             from django.db import close_old_connections
             close_old_connections()
             try:
-                from cms.video_generator import generate_sports_video, upload_to_blob
+                from cms.video_generator import generate_sports_video, upload_to_blob, get_did_status
                 from cms.models import Article as ArticleModel
                 import requests as req_lib
                 import time
 
                 art = ArticleModel.objects.get(id=article_id)
+                logger.info(f"Background thread: Starting video generation for article {article_id}")
 
                 result = generate_sports_video(
                     f"{art.title}. {art.summary or ''}",
@@ -395,7 +396,8 @@ class ArticleViewSet(viewsets.ModelViewSet):
                 )
 
                 if 'error' in result:
-                    logger.error(f"Video generation failed for article {article_id}: {result['error']}")
+                    error_msg = result.get('error')
+                    logger.error(f"Video generation failed for article {article_id}: {error_msg}")
                     art.video_status = 'failed'
                     art.save()
                     return
@@ -405,30 +407,38 @@ class ArticleViewSet(viewsets.ModelViewSet):
                 art.save()
 
                 # Poll D-ID for up to 5 minutes
-                from cms.video_generator import get_did_status
                 max_attempts = 30
                 video_url = None
-                for _ in range(max_attempts):
+                logger.info(f"Background thread: Polling D-ID for talk_id {talk_id}")
+                
+                for attempt in range(max_attempts):
                     status_data = get_did_status(talk_id)
-                    did_status = status_data.get('status') if status_data else None
+                    if not status_data:
+                        logger.error(f"Failed to get D-ID status for talk_id {talk_id}")
+                        break
+                        
+                    did_status = status_data.get('status')
                     if did_status == 'done':
                         video_url = status_data.get('result_url')
                         break
                     elif did_status == 'error':
-                        logger.error(f"D-ID error for article {article_id}: {status_data.get('error')}")
+                        error_detail = status_data.get('error', {})
+                        logger.error(f"D-ID error for article {article_id}: {error_detail}")
                         art.video_status = 'failed'
                         art.save()
                         return
+                    
                     time.sleep(10)
 
                 if not video_url:
-                    logger.error(f"D-ID polling timed out for article {article_id}")
+                    logger.error(f"D-ID polling timed out or failed for article {article_id}")
                     art.video_status = 'failed'
                     art.save()
                     return
 
                 # Try to upload to Vercel Blob for persistence
                 try:
+                    logger.info(f"Background thread: Uploading final video to Vercel Blob for article {article_id}")
                     vid_response = req_lib.get(video_url, timeout=60)
                     if vid_response.status_code == 200:
                         blob_url = upload_to_blob(vid_response.content, f"video_{article_id}_{fmt}.mp4")
@@ -443,7 +453,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
                 logger.info(f"Video generation completed for article {article_id}: {video_url}")
 
             except Exception as e:
-                logger.error(f"Video generation thread error for article {article_id}: {e}", exc_info=True)
+                logger.error(f"Video generation thread error for article {article_id}: {str(e)}", exc_info=True)
                 try:
                     from cms.models import Article as ArticleModel
                     art = ArticleModel.objects.get(id=article_id)

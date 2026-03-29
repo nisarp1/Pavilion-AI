@@ -111,6 +111,7 @@ def upload_to_blob(content, filename):
 def request_did_video(audio_url, format="portrait"):
     """
     Call D-ID API to generate a video talk.
+    Handles Basic Auth by encoding 'user:pass' if needed.
     """
     try:
         api_key = os.getenv("D_ID_API_KEY")
@@ -141,15 +142,26 @@ def request_did_video(audio_url, format="portrait"):
         else:
             payload["config"]["aspect_ratio"] = "16:9"
             
+        # Ensure correct Basic Auth encoding
+        # If the key contains a colon, it's 'user:pass' and needs encoding.
+        # If it doesn't contain a colon and isn't already base64, it might be a single token.
+        # But D-ID usually expects base64(email:key) for its Basic header.
+        import base64
+        auth_header = api_key
+        if ":" in api_key:
+            auth_header = base64.b64encode(api_key.encode()).decode()
+            
         headers = {
             "accept": "application/json",
             "content-type": "application/json",
-            "authorization": f"Basic {api_key}"
+            "authorization": f"Basic {auth_header}"
         }
         
         response = requests.post(url, json=payload, headers=headers)
-        response.raise_for_status()
-        
+        if response.status_code != 201:
+            logger.error(f"D-ID API returned {response.status_code}: {response.text}")
+            response.raise_for_status()
+            
         data = response.json()
         return data.get("id")
     except Exception as e:
@@ -164,9 +176,14 @@ def get_did_status(talk_id):
         api_key = os.getenv("D_ID_API_KEY")
         url = f"https://api.d-id.com/talks/{talk_id}"
         
+        import base64
+        auth_header = api_key
+        if ":" in api_key:
+            auth_header = base64.b64encode(api_key.encode()).decode()
+            
         headers = {
             "accept": "application/json",
-            "authorization": f"Basic {api_key}"
+            "authorization": f"Basic {auth_header}"
         }
         
         response = requests.get(url, headers=headers)
