@@ -352,28 +352,116 @@ class ArticleViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def generate_video_content(self, request, pk=None):
         """
-        Trigger the asynchronous video generation task (TTS + D-ID).
+        Trigger asynchronous video generation in a background thread (TTS + D-ID).
+        Uses threading instead of Celery so it works without a Redis broker.
         Optional payload: {"video_script": "custom script", "format": "portrait/landscape"}
         """
         article = self.get_object()
         video_script = request.data.get('video_script', article.video_script)
-        format = request.data.get('format', article.video_format or 'portrait')
-        
+        video_format = request.data.get('format', article.video_format or 'portrait')
+
         if not video_script:
-            return Response({'error': 'Video script is required. Pulse "Generate Script" first.'}, status=status.HTTP_400_BAD_REQUEST)
-            
-        try:
-            from workers.tasks import task_generate_sports_video
-            task_generate_sports_video.delay(article.id, format=format, script_content=video_script)
-            
-            article.video_status = 'generating_video'
-            article.video_script = video_script
-            article.video_format = format
-            article.save()
-            
-            return Response({'message': 'Video generation started', 'status': 'generating_video'})
-        except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response(
+                {'error': 'Video script is required. Generate a script first.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Save script and mark as generating before spinning up the thread
+        article.video_status = 'generating_video'
+        article.video_script = video_script
+        article.video_format = video_format
+        article.save()
+
+        import threading
+        import logging
+        logger = logging.getLogger(__name__)
+
+        def run_video_generation(article_id, fmt, script):
+            from django.db import close_old_connections
+            close_old_connections()
+            try:
+                from cms.video_generator import generate_sports_video, upload_to_blob
+                from cms.models import Article as ArticleModel
+                import requests as req_lib
+                import time
+
+                art = ArticleModel.objects.get(id=article_id)
+
+                result = generate_sports_video(
+                    f"{art.title}. {art.summary or ''}",
+                    format=fmt,
+                    post_id=article_id,
+                    script_content=script
+                )
+
+                if 'error' in result:
+                    logger.error(f"Video generation failed for article {article_id}: {result['error']}")
+                    art.video_status = 'failed'
+                    art.save()
+                    return
+
+                talk_id = result.get('talk_id')
+                art.video_audio_url = result.get('audio_url', '')
+                art.save()
+
+                # Poll D-ID for up to 5 minutes
+                from cms.video_generator import get_did_status
+                max_attempts = 30
+                video_url = None
+                for _ in range(max_attempts):
+                    status_data = get_did_status(talk_id)
+                    did_status = status_data.get('status') if status_data else None
+                    if did_status == 'done':
+                        video_url = status_data.get('result_url')
+                        break
+                    elif did_status == 'error':
+                        logger.error(f"D-ID error for article {article_id}: {status_data.get('error')}")
+                        art.video_status = 'failed'
+                        art.save()
+                        return
+                    time.sleep(10)
+
+                if not video_url:
+                    logger.error(f"D-ID polling timed out for article {article_id}")
+                    art.video_status = 'failed'
+                    art.save()
+                    return
+
+                # Try to upload to Vercel Blob for persistence
+                try:
+                    vid_response = req_lib.get(video_url, timeout=60)
+                    if vid_response.status_code == 200:
+                        blob_url = upload_to_blob(vid_response.content, f"video_{article_id}_{fmt}.mp4")
+                        if blob_url:
+                            video_url = blob_url
+                except Exception as up_err:
+                    logger.warning(f"Blob upload failed for article {article_id}: {up_err}. Using D-ID URL.")
+
+                art.video_url = video_url
+                art.video_status = 'completed'
+                art.save()
+                logger.info(f"Video generation completed for article {article_id}: {video_url}")
+
+            except Exception as e:
+                logger.error(f"Video generation thread error for article {article_id}: {e}", exc_info=True)
+                try:
+                    from cms.models import Article as ArticleModel
+                    art = ArticleModel.objects.get(id=article_id)
+                    art.video_status = 'failed'
+                    art.save()
+                except Exception:
+                    pass
+            finally:
+                close_old_connections()
+
+        thread = threading.Thread(
+            target=run_video_generation,
+            args=(article.id, video_format, video_script),
+            daemon=True
+        )
+        thread.start()
+
+        return Response({'message': 'Video generation started', 'status': 'generating_video'})
 
     @action(detail=False, methods=['get'])
     def check_available_voices(self, request):
