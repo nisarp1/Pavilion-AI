@@ -95,6 +95,8 @@ function ArticleEdit() {
   const [sidebarOrder, setSidebarOrder] = useState([
     'status',
     'audio',
+    'video_generation',
+    'social_poster',
     'featured_image',
     'author',
     'slug',
