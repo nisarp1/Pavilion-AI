@@ -111,8 +111,9 @@ def upload_to_blob(content, filename):
 def request_did_video(audio_url, format="portrait"):
     """
     Call D-ID API to generate a video talk.
-    Handles Basic Auth by encoding 'user:pass' if needed.
-    Supports Railway format: 'base64(email):raw_key' or plain 'email:key'
+    Handles Basic Auth by encoding 'user:pass'.
+    The D_ID_API_KEY environment variable should be in 'username:password' format
+    as provided by the D-ID Studio.
     """
     try:
         api_key = os.getenv("D_ID_API_KEY")
@@ -143,36 +144,16 @@ def request_did_video(audio_url, format="portrait"):
         else:
             payload["config"]["aspect_ratio"] = "16:9"
             
-        # Ensure correct Basic Auth encoding
+        # D-ID Basic Auth construction
         import base64
         auth_header = api_key
         
+        # If the key contains a colon, it's the raw 'username:password' (even if username is base64 email)
+        # We must encode the whole string to base64 for the Basic header.
         if ":" in api_key:
-            try:
-                parts = api_key.split(":")
-                p1, p2 = parts[0], parts[1]
-                
-                # Check if p1 is base64 encoded email
-                try:
-                    # Add padding for base64 decode if missing
-                    padding = len(p1) % 4
-                    if padding: p1 += "=" * (4 - padding)
-                    decoded_p1 = base64.b64decode(p1).decode()
-                    if "@" in decoded_p1:
-                        # Success! Re-encode the plain combination
-                        auth_header = base64.b64encode(f"{decoded_p1}:{p2}".encode()).decode()
-                    else:
-                        # Not an email, just encode the whole raw key
-                        auth_header = base64.b64encode(api_key.encode()).decode()
-                except:
-                    # If decoding fails, assume it's already plain 'email:key' and encode it
-                    auth_header = base64.b64encode(api_key.encode()).decode()
-            except Exception:
-                auth_header = base64.b64encode(api_key.encode()).decode()
+            auth_header = base64.b64encode(api_key.encode()).decode()
         else:
-            # If no colon, it might already be the Base64 token or a raw token.
-            # D-ID typically expects Basic <base64(email:key)>.
-            # If it doesn't look like base64, we might need to encode it (though Basic needs a colon inside).
+            # If no colon, we assume it's already the full base64 token
             pass
             
         headers = {
@@ -184,6 +165,9 @@ def request_did_video(audio_url, format="portrait"):
         response = requests.post(url, json=payload, headers=headers)
         if response.status_code != 201:
             logger.error(f"D-ID API returned {response.status_code}: {response.text}")
+            # If 403, it's likely a trial restriction or credit issue.
+            if response.status_code == 403:
+                logger.warning("D-ID API returned 403 Forbidden. This often happens on Trial plans for certain API operations.")
             response.raise_for_status()
             
         data = response.json()
@@ -203,18 +187,7 @@ def get_did_status(talk_id):
         import base64
         auth_header = api_key
         if ":" in api_key:
-            try:
-                parts = api_key.split(":")
-                p1, p2 = parts[0], parts[1]
-                padding = len(p1) % 4
-                if padding: p1 += "=" * (4 - padding)
-                decoded_p1 = base64.b64decode(p1).decode()
-                if "@" in decoded_p1:
-                    auth_header = base64.b64encode(f"{decoded_p1}:{p2}".encode()).decode()
-                else:
-                    auth_header = base64.b64encode(api_key.encode()).decode()
-            except:
-                auth_header = base64.b64encode(api_key.encode()).decode()
+            auth_header = base64.b64encode(api_key.encode()).decode()
             
         headers = {
             "accept": "application/json",
