@@ -105,6 +105,8 @@ function ArticleEdit() {
     'categories'
   ])
 
+  const isInitialLoad = useRef(true)
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -144,10 +146,12 @@ function ArticleEdit() {
   useEffect(() => {
     dispatch(fetchArticle(id))
     dispatch(fetchCategoryTree())
+    // Reset initial load flag on ID change
+    isInitialLoad.current = true
   }, [dispatch, id])
 
   useEffect(() => {
-    if (currentArticle) {
+    if (currentArticle && (isInitialLoad.current || !formData.title)) {
       // Format published_at for datetime-local input (YYYY-MM-DDTHH:mm)
       let publishedAt = ''
       if (currentArticle.published_at) {
@@ -183,6 +187,18 @@ function ArticleEdit() {
         video_format: currentArticle.video_format || 'portrait',
         published_at: publishedAt,
       })
+      
+      // Update video_status in formData even if not initial load to keep UI status updated
+      if (!isInitialLoad.current) {
+        setFormData(prev => ({
+          ...prev,
+          video_status: currentArticle.video_status,
+          video_url: currentArticle.video_url,
+          video_audio_url: currentArticle.video_audio_url
+        }))
+      }
+
+      isInitialLoad.current = false
     }
   }, [currentArticle])
 
@@ -191,10 +207,8 @@ function ArticleEdit() {
     let intervalId = null;
 
     // Only poll if we have an article and it's in a state that implies generation might be happening
-    // Check if status is 'fetched', which happens during the "Stub" phase before AI content replaces it
-    // Polling for general article status and video generation status
     if (currentArticle && (currentArticle.status === 'fetched' || currentArticle.video_status === 'generating_video')) {
-      console.log("Polling for AI generation updates...");
+      console.log("Polling for updates (Article Status: " + currentArticle.status + ", Video Status: " + currentArticle.video_status + ")...");
       // Poll every 3 seconds
       intervalId = setInterval(() => {
         dispatch(fetchArticle(id));
@@ -204,7 +218,7 @@ function ArticleEdit() {
     return () => {
       if (intervalId) clearInterval(intervalId);
     };
-  }, [dispatch, id, currentArticle?.status]);
+  }, [dispatch, id, currentArticle?.status, currentArticle?.video_status]);
 
 
   // Load social media scripts

@@ -112,7 +112,7 @@ def request_did_video(audio_url, format="portrait"):
     """
     Call D-ID API to generate a video talk.
     Handles Basic Auth by encoding 'user:pass' if needed.
-    Supports Railway format: 'base64(email):raw_key'
+    Supports Railway format: 'base64(email):raw_key' or plain 'email:key'
     """
     try:
         api_key = os.getenv("D_ID_API_KEY")
@@ -144,41 +144,35 @@ def request_did_video(audio_url, format="portrait"):
             payload["config"]["aspect_ratio"] = "16:9"
             
         # Ensure correct Basic Auth encoding
-        # Railway format: base64(email):raw_key
-        # D-ID expects: Basic base64(email:raw_key)
         import base64
         auth_header = api_key
+        
         if ":" in api_key:
             try:
                 parts = api_key.split(":")
-                email_part = parts[0]
-                key_part = parts[1]
+                p1, p2 = parts[0], parts[1]
                 
-                # Check if email_part is base64 (it should be in Railway)
-                # We try to decode it. If it fails, we assume it's already plain.
+                # Check if p1 is base64 encoded email
                 try:
-                    # Railway's base64 might not have padding, so we might need to add it
-                    missing_padding = len(email_part) % 4
-                    if missing_padding:
-                        email_part += '=' * (4 - missing_padding)
-                    
-                    decoded_email = base64.b64decode(email_part).decode()
-                    # If it contains '@', it's definitely the email
-                    if "@" in decoded_email:
-                        auth_str = f"{decoded_email}:{key_part}"
-                        auth_header = base64.b64encode(auth_str.encode()).decode()
+                    # Add padding for base64 decode if missing
+                    padding = len(p1) % 4
+                    if padding: p1 += "=" * (4 - padding)
+                    decoded_p1 = base64.b64decode(p1).decode()
+                    if "@" in decoded_p1:
+                        # Success! Re-encode the plain combination
+                        auth_header = base64.b64encode(f"{decoded_p1}:{p2}".encode()).decode()
                     else:
-                        # Fallback: if decoded doesn't look like email, encode the whole raw string
+                        # Not an email, just encode the whole raw key
                         auth_header = base64.b64encode(api_key.encode()).decode()
-                except Exception:
-                    # If decoding fails, it's likely plain email:key
+                except:
+                    # If decoding fails, assume it's already plain 'email:key' and encode it
                     auth_header = base64.b64encode(api_key.encode()).decode()
-            except Exception as e:
-                logger.warning(f"Failed to process mixed D-ID API key: {e}. Falling back to direct encoding.")
+            except Exception:
                 auth_header = base64.b64encode(api_key.encode()).decode()
         else:
-            # If no colon, might be a single token (or we can't do much)
-            # D-ID usually needs the colon for Basic Auth.
+            # If no colon, it might already be the Base64 token or a raw token.
+            # D-ID typically expects Basic <base64(email:key)>.
+            # If it doesn't look like base64, we might need to encode it (though Basic needs a colon inside).
             pass
             
         headers = {
@@ -211,22 +205,15 @@ def get_did_status(talk_id):
         if ":" in api_key:
             try:
                 parts = api_key.split(":")
-                email_part = parts[0]
-                key_part = parts[1]
-                
-                try:
-                    missing_padding = len(email_part) % 4
-                    if missing_padding:
-                        email_part += '=' * (4 - missing_padding)
-                    decoded_email = base64.b64decode(email_part).decode()
-                    if "@" in decoded_email:
-                        auth_str = f"{decoded_email}:{key_part}"
-                        auth_header = base64.b64encode(auth_str.encode()).decode()
-                    else:
-                        auth_header = base64.b64encode(api_key.encode()).decode()
-                except Exception:
+                p1, p2 = parts[0], parts[1]
+                padding = len(p1) % 4
+                if padding: p1 += "=" * (4 - padding)
+                decoded_p1 = base64.b64decode(p1).decode()
+                if "@" in decoded_p1:
+                    auth_header = base64.b64encode(f"{decoded_p1}:{p2}".encode()).decode()
+                else:
                     auth_header = base64.b64encode(api_key.encode()).decode()
-            except Exception:
+            except:
                 auth_header = base64.b64encode(api_key.encode()).decode()
             
         headers = {
