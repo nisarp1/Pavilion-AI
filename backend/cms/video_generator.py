@@ -112,6 +112,7 @@ def request_did_video(audio_url, format="portrait"):
     """
     Call D-ID API to generate a video talk.
     Handles Basic Auth by encoding 'user:pass' if needed.
+    Supports Railway format: 'base64(email):raw_key'
     """
     try:
         api_key = os.getenv("D_ID_API_KEY")
@@ -143,13 +144,42 @@ def request_did_video(audio_url, format="portrait"):
             payload["config"]["aspect_ratio"] = "16:9"
             
         # Ensure correct Basic Auth encoding
-        # If the key contains a colon, it's 'user:pass' and needs encoding.
-        # If it doesn't contain a colon and isn't already base64, it might be a single token.
-        # But D-ID usually expects base64(email:key) for its Basic header.
+        # Railway format: base64(email):raw_key
+        # D-ID expects: Basic base64(email:raw_key)
         import base64
         auth_header = api_key
         if ":" in api_key:
-            auth_header = base64.b64encode(api_key.encode()).decode()
+            try:
+                parts = api_key.split(":")
+                email_part = parts[0]
+                key_part = parts[1]
+                
+                # Check if email_part is base64 (it should be in Railway)
+                # We try to decode it. If it fails, we assume it's already plain.
+                try:
+                    # Railway's base64 might not have padding, so we might need to add it
+                    missing_padding = len(email_part) % 4
+                    if missing_padding:
+                        email_part += '=' * (4 - missing_padding)
+                    
+                    decoded_email = base64.b64decode(email_part).decode()
+                    # If it contains '@', it's definitely the email
+                    if "@" in decoded_email:
+                        auth_str = f"{decoded_email}:{key_part}"
+                        auth_header = base64.b64encode(auth_str.encode()).decode()
+                    else:
+                        # Fallback: if decoded doesn't look like email, encode the whole raw string
+                        auth_header = base64.b64encode(api_key.encode()).decode()
+                except Exception:
+                    # If decoding fails, it's likely plain email:key
+                    auth_header = base64.b64encode(api_key.encode()).decode()
+            except Exception as e:
+                logger.warning(f"Failed to process mixed D-ID API key: {e}. Falling back to direct encoding.")
+                auth_header = base64.b64encode(api_key.encode()).decode()
+        else:
+            # If no colon, might be a single token (or we can't do much)
+            # D-ID usually needs the colon for Basic Auth.
+            pass
             
         headers = {
             "accept": "application/json",
@@ -179,7 +209,25 @@ def get_did_status(talk_id):
         import base64
         auth_header = api_key
         if ":" in api_key:
-            auth_header = base64.b64encode(api_key.encode()).decode()
+            try:
+                parts = api_key.split(":")
+                email_part = parts[0]
+                key_part = parts[1]
+                
+                try:
+                    missing_padding = len(email_part) % 4
+                    if missing_padding:
+                        email_part += '=' * (4 - missing_padding)
+                    decoded_email = base64.b64decode(email_part).decode()
+                    if "@" in decoded_email:
+                        auth_str = f"{decoded_email}:{key_part}"
+                        auth_header = base64.b64encode(auth_str.encode()).decode()
+                    else:
+                        auth_header = base64.b64encode(api_key.encode()).decode()
+                except Exception:
+                    auth_header = base64.b64encode(api_key.encode()).decode()
+            except Exception:
+                auth_header = base64.b64encode(api_key.encode()).decode()
             
         headers = {
             "accept": "application/json",
