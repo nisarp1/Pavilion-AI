@@ -15,27 +15,46 @@ DEFAULT_ANCHOR_PORTRAIT = os.getenv("ANCHOR_IMAGE_PORTRAIT_URL", "https://pavili
 
 def generate_script(article_text, format="portrait"):
     """
-    Generate a high-energy Malayalam sports news script using Gemini 1.5 Pro.
+    Generate a high-energy Malayalam sports news script using Gemini.
+    Uses the same API key and model as the rest of the codebase (settings.GEMINI_API_KEY).
     """
     try:
-        gemini.configure(api_key=os.getenv("GEMINI_API_KEY"))
-        model = gemini.GenerativeModel('gemini-1.5-pro')
-        
+        api_key = getattr(settings, 'GEMINI_API_KEY', '') or os.getenv("GEMINI_API_KEY", "")
+        if not api_key:
+            logger.error("GEMINI_API_KEY is not configured. Cannot generate video script.")
+            return None
+
+        gemini.configure(api_key=api_key)
+
+        # Use the same model setting as the rest of the codebase
+        model_name = getattr(settings, 'GEMINI_MODEL', 'gemini-2.0-flash')
+
         if format == "portrait":
             prompt = (
                 f"Generate a high-energy, punchy Malayalam sports news script for an Instagram Reel/Short. "
                 f"Maximum 110 words. Focus on the most exciting parts of this article: {article_text}. "
-                f"The script should sound like a professional sports anchor. Use Malayalam script."
+                f"The script should sound like a professional sports anchor. Use Malayalam script only."
             )
         else:
             prompt = (
                 f"Generate a high-energy, 50-60 second Malayalam sports news script for a YouTube video. "
                 f"Provide enough content for nearly a minute of narration. Focus on this article: {article_text}. "
-                f"The script should sound like a professional sports anchor. Use Malayalam script."
+                f"The script should sound like a professional sports anchor. Use Malayalam script only."
             )
-            
-        response = model.generate_content(prompt)
-        return response.text.strip()
+
+        try:
+            model = gemini.GenerativeModel(model_name)
+            response = model.generate_content(prompt)
+        except Exception as model_err:
+            logger.warning(f"Model {model_name} failed: {model_err}. Retrying with gemini-1.5-flash.")
+            model = gemini.GenerativeModel('gemini-1.5-flash')
+            response = model.generate_content(prompt)
+
+        if response and response.text:
+            return response.text.strip()
+        else:
+            logger.error("Gemini returned an empty response for video script.")
+            return None
     except Exception as e:
         logger.error(f"Error generating script via Gemini: {e}", exc_info=True)
         return None
