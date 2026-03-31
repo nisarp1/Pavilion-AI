@@ -89,6 +89,7 @@ function ArticleEdit() {
     video_url: '',
     video_audio_url: '',
     video_status: 'idle',
+    video_error: '',
     video_format: 'portrait',
   })
 
@@ -184,6 +185,7 @@ function ArticleEdit() {
         video_url: currentArticle.video_url || '',
         video_audio_url: currentArticle.video_audio_url || '',
         video_status: currentArticle.video_status || 'idle',
+        video_error: currentArticle.video_error || '',
         video_format: currentArticle.video_format || 'portrait',
         published_at: publishedAt,
       })
@@ -194,7 +196,8 @@ function ArticleEdit() {
           ...prev,
           video_status: currentArticle.video_status,
           video_url: currentArticle.video_url,
-          video_audio_url: currentArticle.video_audio_url
+          video_audio_url: currentArticle.video_audio_url,
+          video_error: currentArticle.video_error
         }))
       }
 
@@ -987,8 +990,17 @@ function ArticleEdit() {
           )}
 
           {formData.video_status === 'failed' && (
-            <div className="p-2 bg-red-50 text-red-600 text-xs rounded border border-red-100 italic">
-              Generation failed. Check logs or try again with a different script.
+            <div className="p-2 bg-red-50 text-red-600 text-xs rounded border border-red-100 italic flex flex-col gap-1">
+              <p className="font-bold text-[10px] uppercase tracking-wider">Generation failed</p>
+              <p>{formData.video_error || "Check logs or try again with a different script."}</p>
+              {formData.video_error && (
+                <button 
+                  onClick={() => alert("Diagnostic Info: \n" + formData.video_error)}
+                  className="text-left underline mt-1 opacity-70 hover:opacity-100"
+                >
+                  View full error detail
+                </button>
+              )}
             </div>
           )}
         </div>

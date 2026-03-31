@@ -106,7 +106,7 @@ class ArticleSerializer(serializers.ModelSerializer):
             'featured_image', 'featured_image_url', 'featured_media_id', 'featured_media_id_write',
             'audio', 'audio_url',
             'instagram_reel_script', 'instagram_reel_audio', 'reel_audio_url',
-            'video_script', 'video_url', 'video_audio_url', 'video_status', 'video_format',
+            'video_script', 'video_url', 'video_audio_url', 'video_status', 'video_error', 'video_format',
             'social_media_poster_text', 'social_media_caption', 'generated_poster', 'poster_url',
             'meta_title', 'meta_description',
             'og_title', 'og_description', 'og_image', 'og_image_url',
@@ -117,6 +117,7 @@ class ArticleSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'slug', 'created_at', 'updated_at',
             'generation_started_at', 'generation_completed_at',
+            'video_error',
         ]
     
     def create(self, validated_data):

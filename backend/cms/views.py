@@ -399,6 +399,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
                     error_msg = result.get('error')
                     logger.error(f"Video generation failed for article {article_id}: {error_msg}")
                     art.video_status = 'failed'
+                    art.video_error = str(error_msg)
                     art.save()
                     return
 
@@ -425,6 +426,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
                         error_detail = status_data.get('error', {})
                         logger.error(f"D-ID error for article {article_id}: {error_detail}")
                         art.video_status = 'failed'
+                        art.video_error = f"D-ID Error: {error_detail.get('message', 'Unknown D-ID error')}"
                         art.save()
                         return
                     
@@ -433,6 +435,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
                 if not video_url:
                     logger.error(f"D-ID polling timed out or failed for article {article_id}")
                     art.video_status = 'failed'
+                    art.video_error = "D-ID polling timed out or failed to return a result URL."
                     art.save()
                     return
 
@@ -449,6 +452,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
 
                 art.video_url = video_url
                 art.video_status = 'completed'
+                art.video_error = "" # Clear any previous error
                 art.save()
                 logger.info(f"Video generation completed for article {article_id}: {video_url}")
 
@@ -458,6 +462,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
                     from cms.models import Article as ArticleModel
                     art = ArticleModel.objects.get(id=article_id)
                     art.video_status = 'failed'
+                    art.video_error = f"Exception: {str(e)}"
                     art.save()
                 except Exception:
                     pass
@@ -472,6 +477,38 @@ class ArticleViewSet(viewsets.ModelViewSet):
         thread.start()
 
         return Response({'message': 'Video generation started', 'status': 'generating_video'})
+
+    @action(detail=False, methods=['get'])
+    def video_diag(self, request):
+        """
+        Diagnostic endpoint to check status of API keys and environment.
+        """
+        import os
+        
+        def check_key(key_name):
+            val = os.getenv(key_name)
+            if not val:
+                return "MISSING"
+            if len(val) < 8:
+                return "TOO_SHORT"
+            # Return masked version
+            return f"PRESENT (ends with ...{val[-4:]})"
+
+        diag = {
+            "D_ID_API_KEY": check_key("D_ID_API_KEY"),
+            "GOOGLE_CREDENTIALS_JSON": check_key("GOOGLE_CREDENTIALS_JSON"),
+            "VERCEL_BLOB_READ_WRITE_TOKEN": check_key("VERCEL_BLOB_READ_WRITE_TOKEN"),
+            "GEMINI_API_KEY": check_key("GEMINI_API_KEY"),
+            "RAILWAY_ENVIRONMENT": os.getenv("RAILWAY_ENVIRONMENT", "Not detected"),
+            "DATABASE_URL_DETECTED": bool(os.getenv("DATABASE_URL")),
+        }
+        
+        # Check if D_ID_API_KEY has ":"
+        did_key = os.getenv("D_ID_API_KEY")
+        if did_key:
+            diag["D_ID_KEY_FORMAT"] = "BASIC_AUTH (username:password)" if ":" in did_key else "TOKEN_ONLY"
+
+        return Response(diag)
 
     @action(detail=False, methods=['get'])
     def check_available_voices(self, request):

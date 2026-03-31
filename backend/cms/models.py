@@ -331,6 +331,7 @@ class Article(models.Model):
         ],
         help_text="Status of the video generation pipeline"
     )
+    video_error = models.TextField(blank=True, help_text="Error message if the video generation failed")
     video_format = models.CharField(max_length=20, default='portrait', choices=[('portrait', 'Portrait'), ('landscape', 'Landscape')])
     
     # Social Media Content
