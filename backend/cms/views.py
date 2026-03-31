@@ -1,7 +1,7 @@
 """
 API views for CMS.
 """
-from rest_framework import viewsets, status, permissions
+from rest_framework import viewsets, status, permissions, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
@@ -11,7 +11,8 @@ from datetime import timedelta
 import os
 import hashlib
 from PIL import Image
-from io import BytesIO
+from io import BytesIO, StringIO
+from django.core.management import call_command
 from django.db.models import Q
 from django.utils import timezone
 from django.http import HttpResponse, HttpResponseBadRequest, Http404
@@ -509,6 +510,18 @@ class ArticleViewSet(viewsets.ModelViewSet):
             diag["D_ID_KEY_FORMAT"] = "BASIC_AUTH (username:password)" if ":" in did_key else "TOKEN_ONLY"
 
         return Response(diag)
+
+    @action(detail=False, methods=['get'])
+    def run_migrations(self, request):
+        """
+        Temporary emergency endpoint to force migrations on staging.
+        """
+        out = StringIO()
+        try:
+            call_command('migrate', stdout=out)
+            return Response({'status': 'Migration successful', 'output': out.getvalue()})
+        except Exception as e:
+            return Response({'status': 'Migration failed', 'error': str(e), 'output': out.getvalue()}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=['get'])
     def check_available_voices(self, request):
