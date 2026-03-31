@@ -5,5 +5,5 @@ builder = "RAILPACK"
 rootDirectory = "backend"
 
 [deploy]
-startCommand = "gunicorn pavilion_gemini.wsgi --bind 0.0.0.0:$PORT --timeout 120"
+startCommand = "python manage.py migrate && gunicorn pavilion_gemini.wsgi --bind 0.0.0.0:$PORT --timeout 120"
 healthcheckPath = "/"
